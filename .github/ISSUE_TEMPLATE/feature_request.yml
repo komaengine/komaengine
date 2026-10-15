@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement to KomaEngine Community Edition.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you have tried
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Reader and public site
+        - Admin and publishing
+        - Themes
+        - Plugins and extension API
+        - Installation and operations
+        - Documentation
+        - Something else
+    validations:
+      required: true

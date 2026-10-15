@@ -1,0 +1,6 @@
+{
+    "name": "Malicious Preview",
+    "slug": "malicious-preview",
+    "version": "1.0.0",
+    "preview": "../preview-private/secret.svg"
+}

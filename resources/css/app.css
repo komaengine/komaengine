@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+/* Koma Engine admin/auth design tokens (from the Koma Admin mockup). */
+@theme {
+    --font-display: 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'Spline Sans Mono', ui-monospace, monospace;
+
+    --color-koma: #b33f31;
+    --color-koma-hover: #8f3026;
+    --color-koma-soft: rgb(179 63 49 / 0.1);
+
+    --color-ink: #17151a;
+    --color-ink-panel: #221f26;
+    --color-paper: #f5f3f1;
+    --color-line: #eae5df;
+    --color-line-soft: #f4efe9;
+    --color-muted: #625d57;
+    --color-faint: #746c64;
+}
+
+body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+}
+
+[x-cloak] {
+    display: none !important;
+}

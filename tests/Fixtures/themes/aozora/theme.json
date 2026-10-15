@@ -1,0 +1,9 @@
+{
+    "name": "Fixture Aozora",
+    "slug": "aozora",
+    "version": "1.0.0",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "name": "Incompatible Preview",
+    "slug": "incompatible",
+    "version": "1.0.0",
+    "requires": {
+        "koma": "99.0.0"
+    }
+}

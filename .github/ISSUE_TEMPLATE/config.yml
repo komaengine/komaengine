@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/komaengine/komaengine/security/advisories/new
+    about: Report vulnerabilities privately. Never open a public issue for one.
+  - name: Installation and documentation
+    url: https://github.com/komaengine/komaengine/tree/main/docs/install
+    about: Install guides and troubleshooting for Docker Compose and shared hosting.

@@ -1,0 +1,13 @@
+{
+    "name": "Broken Fixture",
+    "slug": "broken",
+    "version": "1.0.0",
+    "description": "Throws during registration so recovery behavior can be tested.",
+    "author": "Koma Engine Tests",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    },
+    "class": "Tests\\Fixtures\\Plugins\\BrokenPlugin",
+    "entry": "broken.php"
+}

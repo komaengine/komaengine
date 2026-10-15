@@ -1,0 +1,13 @@
+{
+    "name": "Tankōbon",
+    "slug": "tankobon",
+    "version": "1.0.0",
+    "description": "A single-series theme for sites that host one manga and nothing else. A cover-forward 'bound volume' landing with the full chapter list, styled like a hardcover book.",
+    "author": "Koma Engine",
+    "accent": "oklch(0.55 0.19 25)",
+    "preview": "preview.svg",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "name": "Guarded Fixture",
+    "slug": "guarded",
+    "version": "1.0.0",
+    "preview": "preview.svg",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    }
+}

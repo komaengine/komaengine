@@ -1,0 +1,109 @@
+{
+  "format": "koma-site-backup-v1",
+  "schema_version": 1,
+  "created_at": "2026-09-03T20:15:00Z",
+  "backup_tool": {
+    "name": "KomaEngine",
+    "version": "0.2.0-dev"
+  },
+  "database": {
+    "driver": "mariadb",
+    "server_version": "11.8.5-MariaDB",
+    "artifact": {
+      "path": "database/database.sql",
+      "bytes": 42512,
+      "sha256": "9d62a551b028f74203e231e5f912d3a7ec8c60ff8736250255505a0dd2a1f2e6"
+    }
+  },
+  "release": {
+    "identity": {
+      "version": "0.2.0-dev",
+      "git_commit": "0123456789abcdef0123456789abcdef01234567",
+      "composer_lock_sha256": "c9a48e20a3b9d56d98254112e39aaf11d9ec4f50bf4f93791f0a545bd2e156c6",
+      "build_metadata_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "build_id": "0.2.0-dev+0123456789ab",
+      "source_dirty": false
+    },
+    "composer_lock": {
+      "path": "release/composer.lock",
+      "bytes": 182432,
+      "sha256": "c9a48e20a3b9d56d98254112e39aaf11d9ec4f50bf4f93791f0a545bd2e156c6"
+    },
+    "build_metadata": {
+      "path": "release/KOMA-BUILD-METADATA.txt",
+      "bytes": 481,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "extensions": [
+      {
+        "kind": "theme",
+        "name": "aozora",
+        "enabled": true,
+        "manifest": {
+          "path": "release/extensions/themes/aozora/theme.json",
+          "bytes": 627,
+          "sha256": "7c31e5a60d6c6eec74355c2e1cb471a9b1ed9d9cbe4d85efb94e67c329e7b5c0"
+        },
+        "files": [
+          {
+            "path": "release/extensions/themes/aozora/theme.json",
+            "bytes": 627,
+            "sha256": "7c31e5a60d6c6eec74355c2e1cb471a9b1ed9d9cbe4d85efb94e67c329e7b5c0"
+          }
+        ]
+      }
+    ]
+  },
+  "secrets": {
+    "bundle": {
+      "path": "secrets/operator-secrets.age",
+      "bytes": 912,
+      "sha256": "0f7a2ee3a9c50497db4765168500991e1ab14255942d3957aa0a2319f8c3e240"
+    },
+    "format": "age"
+  },
+  "files": [
+    {
+      "role": "database",
+      "path": "database/database.sql",
+      "bytes": 42512,
+      "sha256": "9d62a551b028f74203e231e5f912d3a7ec8c60ff8736250255505a0dd2a1f2e6"
+    },
+    {
+      "role": "release",
+      "path": "release/composer.lock",
+      "bytes": 182432,
+      "sha256": "c9a48e20a3b9d56d98254112e39aaf11d9ec4f50bf4f93791f0a545bd2e156c6"
+    },
+    {
+      "role": "release",
+      "path": "release/KOMA-BUILD-METADATA.txt",
+      "bytes": 481,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "role": "release",
+      "path": "release/extensions/themes/aozora/theme.json",
+      "bytes": 627,
+      "sha256": "7c31e5a60d6c6eec74355c2e1cb471a9b1ed9d9cbe4d85efb94e67c329e7b5c0"
+    },
+    {
+      "role": "public_media",
+      "path": "storage/public/media/series/example-cover.webp",
+      "bytes": 18894,
+      "sha256": "a36b21ea04b1f8b965b0a223940572ffb4b85cfa8e40f06af49c37fbea617d1c"
+    },
+    {
+      "role": "private_input",
+      "path": "storage/private/archive-imports/source/example.koma.zip",
+      "bytes": 2048,
+      "sha256": "511ca2aa6dc0fdd26a54ab0f9e18bd142ded502de469f8f6fcae14b071ddfba7"
+    },
+    {
+      "role": "secret_bundle",
+      "path": "secrets/operator-secrets.age",
+      "bytes": 912,
+      "sha256": "0f7a2ee3a9c50497db4765168500991e1ab14255942d3957aa0a2319f8c3e240"
+    }
+  ]
+}

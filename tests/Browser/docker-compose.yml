@@ -1,0 +1,92 @@
+x-koma-qa-environment: &koma-qa-environment
+  APP_NAME: KomaEngine Browser QA
+  APP_ENV: production
+  KOMA_RUNTIME: docker-compose
+  APP_KEY: ${KOMA_QA_APP_KEY:?Set KOMA_QA_APP_KEY}
+  APP_DEBUG: "false"
+  APP_URL: ${KOMA_QA_APP_URL:?Set KOMA_QA_APP_URL}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: warning
+  DB_CONNECTION: mariadb
+  DB_HOST: db
+  DB_PORT: 3306
+  DB_DATABASE: koma_browser
+  DB_USERNAME: koma_browser
+  DB_PASSWORD: ${KOMA_QA_DB_PASSWORD:?Set KOMA_QA_DB_PASSWORD}
+  SESSION_DRIVER: file
+  SESSION_SECURE_COOKIE: "false"
+  CACHE_STORE: file
+  QUEUE_CONNECTION: database
+  DB_QUEUE_RETRY_AFTER: 3660
+  QUEUE_WORKER_TIMEOUT: 3600
+  FILESYSTEM_DISK: public
+  MEDIA_DISK_DRIVER: local
+  INSTALLER_ENVIRONMENT_MODE: process
+  INSTALLER_WRITE_ROBOTS: "false"
+  MAIL_MAILER: log
+
+x-koma-qa-runtime: &koma-qa-runtime
+  image: ${KOMA_QA_APP_IMAGE:?Set KOMA_QA_APP_IMAGE}
+  environment: *koma-qa-environment
+  volumes:
+    - koma-storage:/var/www/html/storage
+  restart: "no"
+
+services:
+  migrate:
+    <<: *koma-qa-runtime
+    command: ["migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *koma-qa-runtime
+    command: ["web"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${KOMA_QA_APP_PORT:?Set KOMA_QA_APP_PORT}:80"
+    healthcheck:
+      test: ["CMD", "gosu", "www-data", "php", "artisan", "koma:doctor", "--mode=bootstrap", "--json"]
+      interval: 5s
+      timeout: 8s
+      retries: 24
+      start_period: 10s
+
+  worker:
+    <<: *koma-qa-runtime
+    command: ["worker"]
+    profiles: ["runtime"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *koma-qa-runtime
+    command: ["scheduler"]
+    profiles: ["runtime"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  db:
+    image: mariadb:11.8.9-noble@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68
+    environment:
+      MARIADB_DATABASE: koma_browser
+      MARIADB_USER: koma_browser
+      MARIADB_PASSWORD: ${KOMA_QA_DB_PASSWORD:?Set KOMA_QA_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${KOMA_QA_DB_ROOT_PASSWORD:?Set KOMA_QA_DB_ROOT_PASSWORD}
+    volumes:
+      - koma-db:/var/lib/mysql
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+volumes:
+  koma-storage:
+  koma-db:

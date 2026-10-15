@@ -1,0 +1,13 @@
+{
+    "name": "Hello Koma",
+    "slug": "hello-koma",
+    "version": "1.0.0",
+    "description": "A tiny example plugin that demonstrates the hook system by adding a note to the admin footer.",
+    "author": "Koma Engine",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    },
+    "class": "Koma\\Plugins\\HelloKoma\\HelloKomaPlugin",
+    "entry": "hello-koma.php"
+}

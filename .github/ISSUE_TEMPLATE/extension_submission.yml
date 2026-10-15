@@ -1,0 +1,58 @@
+name: Theme or plugin submission
+description: Tell us about a KomaEngine theme or plugin you have published.
+labels: [extension]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Listings point to extensions their authors publish and maintain. Read the [theme](https://github.com/komaengine/komaengine/blob/main/docs/theme-development.md) and [plugin](https://github.com/komaengine/komaengine/blob/main/docs/plugin-development.md) guides first.
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Theme
+        - Plugin
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Name
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source repository URL
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License
+      placeholder: MIT
+    validations:
+      required: true
+  - type: input
+    id: compatibility
+    attributes:
+      label: KomaEngine versions tested
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What it does
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: It does not collect or send visitor data without the site operator's explicit configuration.
+          required: true
+        - label: I maintain it and will respond to reported problems.
+          required: true

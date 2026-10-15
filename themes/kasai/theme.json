@@ -1,0 +1,13 @@
+{
+    "name": "Kasai",
+    "slug": "kasai",
+    "version": "1.0.0",
+    "description": "A fast, high-energy catalog theme with bold editorial surfaces, compact update feeds, and a focused dark reader.",
+    "author": "Koma Engine",
+    "accent": "oklch(0.55 0.19 32)",
+    "preview": "preview.svg",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    }
+}

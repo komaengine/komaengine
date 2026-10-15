@@ -1,0 +1,431 @@
+name: Release
+
+# A pushed v* tag in the public repository builds, scans, signs, and verifies
+# that exact commit and opens a draft GitHub Release with every artifact and
+# piece of evidence. A maintainer publishes the draft after checking it.
+# Anywhere else, a manual run of an existing tag is a rehearsal under test
+# image names. scripts/release/release-identity.sh enforces both rules.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to rehearse (rehearsals never run in the public repository)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  identity:
+    name: Release identity
+    if: >-
+      (github.event_name == 'push' && github.repository == 'komaengine/komaengine') ||
+      (github.event_name == 'workflow_dispatch' && github.repository != 'komaengine/komaengine')
+    runs-on: ubuntu-24.04
+    outputs:
+      mode: ${{ steps.identity.outputs.mode }}
+      tag: ${{ steps.identity.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+      commit: ${{ steps.identity.outputs.commit }}
+      build_id: ${{ steps.identity.outputs.build_id }}
+      image: ${{ steps.identity.outputs.image }}
+      image_tags: ${{ steps.identity.outputs.image_tags }}
+      prerelease: ${{ steps.identity.outputs.prerelease }}
+      identity: ${{ steps.identity.outputs.identity }}
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+      - name: Decide and check the release identity
+        id: identity
+        shell: bash
+        env:
+          KOMA_RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+        run: scripts/release/release-identity.sh
+
+  build-native:
+    name: Native ${{ matrix.platform }}
+    needs: identity
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY_IMAGE: ${{ needs.identity.outputs.image }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+
+      - name: Verify exact source identity
+        shell: bash
+        env:
+          RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+          RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$(tr -d '\r\n' < VERSION)" = "$RELEASE_VERSION"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push native manifest with BuildKit attestations
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            KOMA_RELEASE_VERSION=${{ needs.identity.outputs.version }}
+            KOMA_RELEASE_COMMIT=${{ needs.identity.outputs.commit }}
+            KOMA_RELEASE_DIRTY=false
+            KOMA_RELEASE_BUILD_ID=${{ needs.identity.outputs.build_id }}
+            KOMA_TRUSTED_BUILD=true
+
+      - name: Run native install and operational doctor
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/architecture-${{ matrix.arch }}"
+          mkdir -p "$evidence"
+          tests/Release/native-image-doctor-smoke.sh \
+            "${REGISTRY_IMAGE}@${IMAGE_DIGEST}" "${{ matrix.platform }}" \
+            | tee "$evidence/doctor-${{ matrix.arch }}.log"
+
+      - name: Generate per-architecture scan evidence
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/architecture-${{ matrix.arch }}"
+          mkdir -p "$evidence" "$RUNNER_TEMP/trivy-cache"
+          image_ref="${REGISTRY_IMAGE}@${IMAGE_DIGEST}"
+          . scripts/release/image-lock.env
+          printf '%s\n' "$IMAGE_DIGEST" > "$evidence/image-digest-${{ matrix.arch }}.txt"
+
+          docker run --rm \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            "$KOMA_SYFT_IMAGE" scan "$image_ref" -o spdx-json \
+            > "$evidence/image-${{ matrix.arch }}.spdx.json"
+          docker run --rm \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --volume "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            --volume "$evidence:/evidence" \
+            "$KOMA_TRIVY_IMAGE" image --scanners vuln --ignore-unfixed \
+            --severity HIGH,CRITICAL --format json \
+            --output "/evidence/trivy-${{ matrix.arch }}.json" "$image_ref"
+          docker run --rm \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --volume "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            "$KOMA_TRIVY_IMAGE" image --scanners vuln --ignore-unfixed \
+            --severity HIGH,CRITICAL --exit-code 1 "$image_ref"
+
+      - name: Upload native architecture evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: architecture-${{ matrix.arch }}
+          path: ${{ runner.temp }}/architecture-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Assemble, sign, verify, and draft the release
+    needs: [identity, build-native]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      REGISTRY_IMAGE: ${{ needs.identity.outputs.image }}
+      RELEASE_MODE: ${{ needs.identity.outputs.mode }}
+      RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+      RELEASE_IMAGE_TAGS: ${{ needs.identity.outputs.image_tags }}
+      RELEASE_PRERELEASE: ${{ needs.identity.outputs.prerelease }}
+      SIGNING_IDENTITY: ${{ needs.identity.outputs.identity }}
+      OIDC_ISSUER: https://token.actions.githubusercontent.com
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+
+      - name: Download architecture evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: architecture-*
+          path: ${{ runner.temp }}/architectures
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Run release workflow regression checks
+        shell: bash
+        run: tests/Release/release-workflow-smoke.sh --no-lint
+
+      - name: Verify pins and assemble the multi-architecture image
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests/Release/image-pins-smoke.sh --resolve
+          mapfile -t digests < <(cat "$RUNNER_TEMP"/architectures/*/image-digest-*.txt | sort -u)
+          test "${#digests[@]}" -eq 2
+          refs=()
+          for digest in "${digests[@]}"; do
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            refs+=("${REGISTRY_IMAGE}@${digest}")
+          done
+          tag_args=()
+          for tag in $RELEASE_IMAGE_TAGS; do
+            tag_args+=(--tag "${REGISTRY_IMAGE}:${tag}")
+          done
+          docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
+          first_tag="${RELEASE_IMAGE_TAGS%% *}"
+          index_digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${first_tag}" \
+            --format '{{.Manifest.Digest}}')"
+          [[ "$index_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          for tag in $RELEASE_IMAGE_TAGS; do
+            test "$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tag}" \
+              --format '{{.Manifest.Digest}}')" = "$index_digest"
+          done
+          mkdir -p "$RUNNER_TEMP/release-evidence"
+          printf '%s\n' "$index_digest" > "$RUNNER_TEMP/release-evidence/image-index-digest.txt"
+          echo "digest=$index_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Keylessly sign and verify the image index
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test "https://github.com/${GITHUB_WORKFLOW_REF}" = "$SIGNING_IDENTITY"
+          full_image="${REGISTRY_IMAGE}@${IMAGE_DIGEST}"
+          cosign sign --yes "$full_image"
+          cosign verify \
+            --certificate-identity "$SIGNING_IDENTITY" \
+            --certificate-oidc-issuer "$OIDC_ISSUER" \
+            "$full_image" \
+            > "$RUNNER_TEMP/release-evidence/image-signature-verification.json"
+
+          unsigned_digest="$(cat "$RUNNER_TEMP"/architectures/*/image-digest-*.txt | LC_ALL=C sort | head -n 1)"
+          if cosign verify \
+            --certificate-identity "$SIGNING_IDENTITY" \
+            --certificate-oidc-issuer "$OIDC_ISSUER" \
+            "${REGISTRY_IMAGE}@${unsigned_digest}" >/dev/null 2>&1; then
+            echo 'Image signature verification accepted an unsigned platform digest.' >&2
+            exit 1
+          fi
+
+      - name: Build the exact flat-file artifact and release evidence
+        id: artifact
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          artifact_output="$RUNNER_TEMP/artifacts"
+          evidence="$RUNNER_TEMP/release-evidence"
+          mkdir -p "$artifact_output" "$evidence"
+          docker build --file tests/Release/flatfile-builder.Dockerfile \
+            --tag koma-release-flatfile-builder:local .
+          docker run --rm \
+            --env KOMA_SOURCE_REF="$RELEASE_COMMIT" \
+            --env GIT_CONFIG_COUNT=1 \
+            --env GIT_CONFIG_KEY_0=safe.directory \
+            --env GIT_CONFIG_VALUE_0=/workspace \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --volume "$artifact_output:/output" \
+            --workdir /workspace \
+            koma-release-flatfile-builder:local \
+            bash -lc 'scripts/build-flatfile.sh /output' | tee "$RUNNER_TEMP/flatfile-build.log"
+          archive="$artifact_output/$(basename "$(sed -n 's/^ARCHIVE=//p' \
+            "$RUNNER_TEMP/flatfile-build.log" | tail -n 1)")"
+          test -f "$archive"
+
+          docker run --rm \
+            --env KOMA_EXPECTED_SOURCE_COMMIT="$RELEASE_COMMIT" \
+            --env KOMA_EXPECTED_RELEASE_VERSION="$RELEASE_VERSION" \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --volume "$artifact_output:/output:ro" \
+            --workdir /workspace \
+            koma-release-flatfile-builder:local \
+            bash -lc "tests/Release/inspect-artifact.sh '/output/$(basename "$archive")'"
+
+          full_image="${REGISTRY_IMAGE}@${IMAGE_DIGEST}"
+          docker pull "$full_image"
+          scripts/release/generate-supply-chain.sh \
+            --source-ref "$RELEASE_COMMIT" \
+            --artifact "$archive" \
+            --image "$full_image" \
+            --image-digest "$IMAGE_DIGEST" \
+            --output "$evidence" \
+            --builder-id "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_WORKFLOW_SHA}"
+          scripts/release/verify-supply-chain.sh \
+            --source-ref "$RELEASE_COMMIT" \
+            --artifact "$archive" \
+            --image "$full_image" \
+            --image-digest "$IMAGE_DIGEST" \
+            --evidence "$evidence"
+          cp "$archive" "$evidence/"
+          echo "archive=$evidence/$(basename "$archive")" >> "$GITHUB_OUTPUT"
+
+      - name: Keylessly sign and tamper-test the release files
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.artifact.outputs.archive }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/release-evidence"
+          cosign sign-blob --yes --bundle "$evidence/artifact.sigstore.json" "$ARCHIVE"
+          cosign verify-blob \
+            --bundle "$evidence/artifact.sigstore.json" \
+            --certificate-identity "$SIGNING_IDENTITY" \
+            --certificate-oidc-issuer "$OIDC_ISSUER" \
+            "$ARCHIVE"
+          cosign sign-blob --yes --bundle "$evidence/evidence.sigstore.json" "$evidence/SHA256SUMS"
+          cosign verify-blob \
+            --bundle "$evidence/evidence.sigstore.json" \
+            --certificate-identity "$SIGNING_IDENTITY" \
+            --certificate-oidc-issuer "$OIDC_ISSUER" \
+            "$evidence/SHA256SUMS"
+
+          cp "$ARCHIVE" "$RUNNER_TEMP/tampered.zip"
+          printf 'tampered\n' >> "$RUNNER_TEMP/tampered.zip"
+          if cosign verify-blob \
+            --bundle "$evidence/artifact.sigstore.json" \
+            --certificate-identity "$SIGNING_IDENTITY" \
+            --certificate-oidc-issuer "$OIDC_ISSUER" \
+            "$RUNNER_TEMP/tampered.zip" >/dev/null 2>&1; then
+            echo 'Cosign accepted a byte-tampered artifact.' >&2
+            exit 1
+          fi
+
+      - name: Collect release assets and notes
+        id: assets
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.artifact.outputs.archive }}
+          IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/release-assets"
+          evidence="$RUNNER_TEMP/release-evidence"
+          mkdir -p "$assets"
+          cp "$evidence"/* "$assets/"
+          cp "$RUNNER_TEMP"/architectures/*/* "$assets/"
+
+          required=(
+            "$(basename "$ARCHIVE")" SHA256SUMS provenance.intoto.json image-lock.env
+            flatfile.spdx.json npm.spdx.json image.spdx.json
+            artifact.sigstore.json evidence.sigstore.json
+            image-signature-verification.json image-index-digest.txt
+          )
+          for arch in amd64 arm64; do
+            required+=("image-digest-$arch.txt" "image-$arch.spdx.json" "trivy-$arch.json" "doctor-$arch.log")
+          done
+          for file in "${required[@]}"; do
+            test -s "$assets/$file" || { echo "Required release asset is missing: $file" >&2; exit 1; }
+          done
+
+          notes="$RUNNER_TEMP/release-notes.md"
+          changes="$(awk -v version="$RELEASE_VERSION" '
+            index($0, "## " version " ") == 1 || $0 == "## " version { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)"
+          if [[ -z "${changes//[[:space:]]/}" ]]; then
+            if [[ "$RELEASE_MODE" == release ]]; then
+              echo "CHANGELOG.md has no section for $RELEASE_VERSION." >&2
+              exit 1
+            fi
+            changes='Rehearsal build; no changelog entry.'
+          fi
+          zip_name="$(basename "$ARCHIVE")"
+          zip_sha256="$(sha256sum "$ARCHIVE" | cut -d' ' -f1)"
+          printf '%s\n\n' "$changes" > "$notes"
+          cat >> "$notes" <<NOTES
+          ## Verify this release
+
+          - Source commit: \`$RELEASE_COMMIT\`
+          - Release ZIP: \`$zip_name\`, SHA-256 \`$zip_sha256\`
+          - Container image: \`$REGISTRY_IMAGE@$IMAGE_DIGEST\`
+          - Signing identity: \`$SIGNING_IDENTITY\`, issuer \`$OIDC_ISSUER\`
+
+          See docs/SUPPLY_CHAIN.md in this release for the verification commands.
+          NOTES
+          echo "notes=$notes" >> "$GITHUB_OUTPUT"
+          echo "dir=$assets" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the evidence as a workflow artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ needs.identity.outputs.tag }}
+          path: ${{ steps.assets.outputs.dir }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Open a draft GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ steps.assets.outputs.notes }}
+          ASSETS: ${{ steps.assets.outputs.dir }}
+        run: |
+          set -euo pipefail
+          flags=(--draft --verify-tag --title "KomaEngine ${RELEASE_VERSION}" --notes-file "$NOTES")
+          if [[ "$RELEASE_PRERELEASE" == true ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${flags[@]}" "$ASSETS"/*

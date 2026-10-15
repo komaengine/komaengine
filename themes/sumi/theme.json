@@ -1,0 +1,13 @@
+{
+    "name": "Sumi",
+    "slug": "sumi",
+    "version": "1.0.0",
+    "description": "A restrained dark editorial theme with a compact app shell, dense release feeds, and an immersive reader.",
+    "author": "Koma Engine",
+    "accent": "oklch(0.72 0.17 55)",
+    "preview": "preview.svg",
+    "requires": {
+        "koma": "0.1.0",
+        "php": "8.2.0"
+    }
+}

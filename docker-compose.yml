@@ -1,0 +1,130 @@
+x-koma-environment: &koma-environment
+  APP_NAME: ${KOMA_APP_NAME:-KomaEngine}
+  APP_ENV: production
+  KOMA_RUNTIME: docker-compose
+  APP_KEY: ${KOMA_APP_KEY:?Set KOMA_APP_KEY in the Docker env file}
+  APP_DEBUG: "false"
+  APP_URL: ${KOMA_APP_URL:?Set KOMA_APP_URL in the Docker env file}
+  APP_LOCALE: ${KOMA_APP_LOCALE:-en}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${KOMA_LOG_LEVEL:-info}
+  DB_CONNECTION: mariadb
+  DB_HOST: db
+  DB_PORT: 3306
+  DB_DATABASE: ${KOMA_DB_DATABASE:-komaengine}
+  DB_USERNAME: ${KOMA_DB_USERNAME:-koma}
+  DB_PASSWORD: ${KOMA_DB_PASSWORD:?Set KOMA_DB_PASSWORD in the Docker env file}
+  SESSION_DRIVER: file
+  SESSION_SECURE_COOKIE: ${KOMA_SESSION_SECURE_COOKIE:-true}
+  CACHE_STORE: file
+  QUEUE_CONNECTION: database
+  DB_QUEUE_RETRY_AFTER: ${KOMA_DB_QUEUE_RETRY_AFTER:-3660}
+  QUEUE_WORKER_TIMEOUT: ${KOMA_QUEUE_WORKER_TIMEOUT:-3600}
+  FILESYSTEM_DISK: public
+  MEDIA_DISK_DRIVER: local
+  INSTALLER_ENVIRONMENT_MODE: process
+  INSTALLER_WRITE_ROBOTS: "false"
+  MAIL_MAILER: log
+
+x-koma-build-args: &koma-build-args
+  KOMA_RELEASE_VERSION: ${KOMA_RELEASE_VERSION:-1.0.0}
+  KOMA_RELEASE_COMMIT: ${KOMA_RELEASE_COMMIT:-unavailable}
+  KOMA_RELEASE_DIRTY: ${KOMA_RELEASE_DIRTY:-unknown}
+  KOMA_RELEASE_BUILD_ID: ${KOMA_RELEASE_BUILD_ID:-development}
+  KOMA_TRUSTED_BUILD: ${KOMA_TRUSTED_BUILD:-false}
+
+# Container output is rotated by Docker itself. Without this block a service
+# inherits the daemon default, which on many hosts is an unbounded json-file.
+# Each service keeps at most max-file files of max-size before compression.
+x-koma-logging: &koma-logging
+  driver: local
+  options:
+    max-size: ${KOMA_LOG_MAX_SIZE:-10m}
+    max-file: ${KOMA_LOG_MAX_FILE:-5}
+
+x-koma-runtime: &koma-runtime
+  image: komaengine:local
+  environment: *koma-environment
+  volumes:
+    - koma-storage:/var/www/html/storage
+  restart: unless-stopped
+  logging: *koma-logging
+
+services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args: *koma-build-args
+    image: komaengine:local
+    command: ["migrate"]
+    environment: *koma-environment
+    volumes:
+      - koma-storage:/var/www/html/storage
+    restart: "no"
+    logging: *koma-logging
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *koma-runtime
+    command: ["web"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${KOMA_APP_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "gosu", "www-data", "php", "artisan", "koma:doctor", "--mode=bootstrap", "--json"]
+      interval: 10s
+      timeout: 8s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    <<: *koma-runtime
+    command: ["worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 61m
+
+  scheduler:
+    <<: *koma-runtime
+    command: ["scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  db:
+    image: mariadb:11.8.9-noble@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68
+    restart: unless-stopped
+    logging: *koma-logging
+    environment:
+      MARIADB_DATABASE: ${KOMA_DB_DATABASE:-komaengine}
+      MARIADB_USER: ${KOMA_DB_USERNAME:-koma}
+      MARIADB_PASSWORD: ${KOMA_DB_PASSWORD:?Set KOMA_DB_PASSWORD in the Docker env file}
+      MARIADB_ROOT_PASSWORD: ${KOMA_DB_ROOT_PASSWORD:?Set KOMA_DB_ROOT_PASSWORD in the Docker env file}
+    volumes:
+      - koma-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  adminer:
+    image: adminer:6.1.0-standalone@sha256:7be7f81fcb43980548639c82b04f747f057bd43d54d3a3a561453185fe4c40a4
+    profiles: ["tools"]
+    restart: unless-stopped
+    logging: *koma-logging
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${KOMA_ADMINER_PORT:-8081}:8080"
+
+volumes:
+  koma-storage:
+  koma-db:
