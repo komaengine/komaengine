@@ -125,7 +125,7 @@ depends on how KomaEngine is installed:
   it, for example:
 
   ```dockerfile
-  FROM ghcr.io/komaengine/komaengine:1.0.0
+  FROM ghcr.io/komaengine/komaengine:1.0.1
   COPY paper-moon /var/www/html/themes/paper-moon
   ```
 

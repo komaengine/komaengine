@@ -163,7 +163,7 @@ A plugin is a directory under `plugins/` in the application:
   it, for example:
 
   ```dockerfile
-  FROM ghcr.io/komaengine/komaengine:1.0.0
+  FROM ghcr.io/komaengine/komaengine:1.0.1
   COPY reading-note /var/www/html/plugins/reading-note
   ```
 

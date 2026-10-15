@@ -15,7 +15,7 @@ RUN npm run build
 # ---- Stage 2: runtime (Apache + PHP-FPM 8.4) ----
 FROM php:8.4.26-fpm-bookworm@sha256:6bfef8e416977aa41f48e3e42a40c1e08050d24e4a938c6edb421400bff24601 AS runtime
 
-ARG KOMA_RELEASE_VERSION=1.0.0
+ARG KOMA_RELEASE_VERSION=1.0.1
 ARG KOMA_RELEASE_COMMIT=unavailable
 ARG KOMA_RELEASE_DIRTY=unknown
 ARG KOMA_RELEASE_BUILD_ID=development

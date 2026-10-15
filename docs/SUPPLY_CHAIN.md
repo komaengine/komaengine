@@ -11,10 +11,10 @@ a download and how the release is produced.
 
 You need [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
 3.0 or newer. Every release is signed by the release workflow running for its
-own tag, so for version `1.0.0`:
+own tag, so for version `1.0.1`:
 
 ```bash
-IDENTITY=https://github.com/komaengine/komaengine/.github/workflows/release.yml@refs/tags/v1.0.0
+IDENTITY=https://github.com/komaengine/komaengine/.github/workflows/release.yml@refs/tags/v1.0.1
 ISSUER=https://token.actions.githubusercontent.com
 ```
 
@@ -23,7 +23,7 @@ the release notes when you can, so that what you verify is exactly what you
 pull:
 
 ```bash
-cosign verify ghcr.io/komaengine/komaengine:1.0.0 \
+cosign verify ghcr.io/komaengine/komaengine:1.0.1 \
   --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER"
 ```
 

@@ -131,6 +131,15 @@ require "github.repository == '$PUBLIC'" 'must gate real releases on the public 
 require "github.repository != '$PUBLIC'" 'must keep rehearsals out of the public repository'
 require 'gh release create .*"\$\{flags\[@\]\}"' 'must create the release through the reviewed flags'
 require 'flags=\(--draft ' 'must only ever open a draft release'
+require 'composer audit --locked --no-dev' 'must audit the locked production dependencies'
+
+audit_line="$(grep -n 'composer audit --locked --no-dev' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
+build_line="$(grep -n '^  build-native:$' "$WORKFLOW" | cut -d: -f1)"
+[[ -n "$audit_line" && -n "$build_line" && "$audit_line" -lt "$build_line" ]] || {
+    echo 'release.yml must audit dependencies in the identity job, before any image is built.' >&2
+    exit 1
+}
+CHECKS=$((CHECKS + 1))
 
 unpinned="$(grep -E '^\s*(- )?uses:' "$WORKFLOW" | grep -Ev '@[0-9a-f]{40}( |$)' || true)"
 [[ -z "$unpinned" ]] || { echo "release.yml has actions not pinned to a commit: $unpinned" >&2; exit 1; }

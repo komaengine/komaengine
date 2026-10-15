@@ -27,7 +27,7 @@ x-koma-environment: &koma-environment
   MAIL_MAILER: log
 
 x-koma-build-args: &koma-build-args
-  KOMA_RELEASE_VERSION: ${KOMA_RELEASE_VERSION:-1.0.0}
+  KOMA_RELEASE_VERSION: ${KOMA_RELEASE_VERSION:-1.0.1}
   KOMA_RELEASE_COMMIT: ${KOMA_RELEASE_COMMIT:-unavailable}
   KOMA_RELEASE_DIRTY: ${KOMA_RELEASE_DIRTY:-unknown}
   KOMA_RELEASE_BUILD_ID: ${KOMA_RELEASE_BUILD_ID:-development}

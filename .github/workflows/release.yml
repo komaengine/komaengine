@@ -54,6 +54,16 @@ jobs:
           KOMA_RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
         run: scripts/release/release-identity.sh
 
+      # Advisories are published after a commit is frozen. Check the locked
+      # production dependencies before any image is built, pushed, or signed;
+      # the artifact inspection repeats the same audit on the built package.
+      - name: Audit locked production dependencies
+        shell: bash
+        run: |
+          . scripts/release/image-lock.env
+          docker run --rm --volume "$PWD:/app:ro" --workdir /app --env COMPOSER_HOME=/tmp/composer \
+            "$KOMA_COMPOSER_IMAGE" composer audit --locked --no-dev --no-interaction
+
   build-native:
     name: Native ${{ matrix.platform }}
     needs: identity

@@ -3,10 +3,35 @@
 Notable changes to KomaEngine Community Edition. The version comes from the
 root `VERSION` file, and every build also records its exact source commit.
 
-## 1.0.0
+## 1.0.1
 
-The first public release of Community Edition. It is the code accepted as
-`1.0.0-rc.2`, plus the changes below.
+The first published release of Community Edition: `1.0.0` with dependency
+security updates.
+
+### Security
+
+- `symfony/http-foundation` 7.4.21 fixes CVE-2026-108082, a regular-expression
+  denial of service through the `Cache-Control` request header.
+- `axios` 1.20.0, which is bundled into the application's scripts, fixes the
+  advisories published for earlier versions since `1.0.0` was prepared.
+- Development and build tools are updated for new advisories:
+  `symfony/yaml` 7.4.21, `concurrently` 9.2.5, `shell-quote` 1.12.0, and
+  `source-map-js` 1.2.2. None of them ships in the package or the image.
+
+### Changed
+
+- The release workflow audits the locked production dependencies before it
+  builds, pushes, or signs anything, so a newly published advisory stops a
+  release before it starts.
+
+## 1.0.0 — tagged, not released
+
+Tagged on October 15, 2026, but not published: the release workflow stopped
+when a newly published advisory for `symfony/http-foundation` failed its
+dependency audit. Its container image was built and signed but never made
+public. Use `1.0.1`, which contains everything below.
+
+It is the code accepted as `1.0.0-rc.2`, plus the changes below.
 
 ### Changed
 
