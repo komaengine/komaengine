@@ -11,6 +11,27 @@ Bootstrap mode checks the key, local media driver, database, migrations,
 runtime paths, cache, storage link, and absence of the legacy public manga
 directory. Operational mode also requires the terminal installer marker.
 
+## Common hosting problems
+
+Find the message or symptom you see. For the step-by-step guides, see
+[Installing KomaEngine](README.md).
+
+| What you see | Usual cause | What to do |
+|---|---|---|
+| Your old site, a host placeholder page, or a file listing instead of KomaEngine | The domain still serves `httpdocs` or `public_html`. | Set the domain's document root to `komaengine/public` in the control panel. |
+| The installer's **Web document root** check is not ready | Same as above, or the root points at `komaengine` instead of `komaengine/public`. | Point it at `komaengine/public` exactly. See [Wrong document root](#wrong-document-root). |
+| `Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0"` | The domain, or the terminal, uses an older PHP. | Choose PHP 8.3, 8.4, or 8.5 for the domain in the panel. In the terminal, run commands with the full path to the newer PHP; your panel guide lists it. |
+| `php -v` in the terminal shows a different version from the panel | Panels keep several PHP versions; plain `php` is often the server's default. | Use the full path to the PHP version you chose for the domain in every command and cron job. |
+| `No application encryption key has been specified.` | `.env` is missing, or `APP_KEY` is empty. | Run `php artisan key:generate --force` once in the `komaengine` folder. |
+| The installer says `.env` `mode 0644 is unsafe` (or another mode) | A file manager or upload changed the file's permissions. | Run `chmod 600 .env` in the `komaengine` folder and reload the page. |
+| Every page except the home page is `404 Not Found` | The web server is not passing requests to `index.php`. On Apache and LiteSpeed, `public/.htaccess` must be allowed; on Nginx, the site needs a `try_files` rule. | On Plesk, see the Plesk guide's note on Nginx-only hosting. Elsewhere, ask the host to allow `.htaccess` overrides (`AllowOverride All`). |
+| `SQLSTATE[HY000] [1045] Access denied for user` | Wrong database user name or password. | Copy the full names from the panel, including any `account_` prefix. Re-type the password, and quote it in `.env` if it contains `#` or spaces. |
+| `SQLSTATE[HY000] [2002] No such file or directory` | `DB_HOST=localhost` uses a socket that PHP cannot find. | Set `DB_HOST=127.0.0.1` and try again. |
+| `SQLSTATE[HY000] [2002] Connection refused` or a timeout | Wrong database host or port. | Use the host and port the panel shows for the database. |
+| `ln: failed to create symbolic link 'public/storage': File exists` | The link is already there. | Fine if `php artisan koma:doctor --mode=bootstrap` shows `storage_link OK`. Otherwise see [Permissions and storage link](#permissions-and-storage-link). |
+| `Request Entity Too Large` (HTTP 413) when uploading | A web-server limit is lower than PHP's. | See [Upload failures](#upload-failures). |
+| Scheduled chapters never publish, or archive imports stay queued | The cron jobs are not running, or use the wrong path or PHP. | Check both cron jobs from [Queue and scheduler](shared-hosting.md#queue-and-scheduler). Run each command once by hand in the terminal to see its error. |
+
 ## Installer setup token
 
 Before the first browser setup, run `php artisan koma:installer-token` as the

@@ -36,10 +36,16 @@ does not determine publication rights or an operator's legal obligations.
 
 ## Install
 
+Start at [Installing KomaEngine](docs/install/README.md), which helps you pick
+a guide and lists what you need.
+
 | Path | Use it when |
 |---|---|
+| [Plesk](docs/install/plesk.md) | Your hosting uses Plesk. Upload the release ZIP. |
+| [cPanel](docs/install/cpanel.md) | Your hosting uses cPanel. Upload the release ZIP. |
+| [Ubuntu server](docs/install/ubuntu-vps.md) | You have a VPS with Ubuntu and SSH, and no control panel. |
 | [Docker Compose](docs/install/docker.md) | You run your own server. Includes MariaDB, a queue worker, and the scheduler. |
-| [Shared hosting](docs/install/shared-hosting.md) | Your host gives you PHP, a database, and a `public/` document root. Upload the release ZIP. |
+| [Flat-file reference](docs/install/shared-hosting.md) | Another control panel, or you want the detail behind each step. |
 | [Local development](docs/install/local.md) | You are working on KomaEngine itself on your own machine. |
 
 Requirements: PHP 8.3, 8.4, or 8.5 with GD, ZIP, PDO, mbstring, intl, bcmath,

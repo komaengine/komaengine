@@ -33,6 +33,10 @@ required=(
     .koma-release-build
     KOMA-BUILD-METADATA.txt
     KOMA-FILES.sha256
+    docs/install/README.md
+    docs/install/plesk.md
+    docs/install/cpanel.md
+    docs/install/ubuntu-vps.md
     docs/install/shared-hosting.md
     docs/install/troubleshooting.md
     docs/install/recovery.md

@@ -3,6 +3,17 @@
 Notable changes to KomaEngine Community Edition. The version comes from the
 root `VERSION` file, and every build also records its exact source commit.
 
+## Unreleased
+
+### Documentation
+
+- Step-by-step installation guides for Plesk, cPanel, and Ubuntu servers, and
+  a starting page that helps choose one and lists what each install needs.
+- The shared-hosting guide is now the flat-file reference for other hosts,
+  with a table of `.env` settings and cron jobs for the queue worker and
+  scheduler.
+- Troubleshooting lists common hosting errors and how to fix them.
+
 ## 1.0.1
 
 The first published release of Community Edition: `1.0.0` with dependency
