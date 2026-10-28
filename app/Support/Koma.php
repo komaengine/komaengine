@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Branding\SiteBranding;
 use App\Engine\Plugins\PluginManager;
 use App\Engine\Settings\Settings;
 use App\Engine\Themes\ThemeManager;
@@ -41,6 +42,49 @@ class Koma
     public static function siteTitle(): string
     {
         return (string) app(Settings::class)->get('site_title', config('app.name'));
+    }
+
+    /**
+     * The logo from Settings → Branding, or null when none is set (show the
+     * theme's own mark). Print the site title next to it when `show_title` is
+     * true; `alt` is then empty so screen readers do not hear the title twice.
+     *
+     * @return array{url: string, alt: string, width: int, height: int, show_title: bool}|null
+     */
+    public static function logo(): ?array
+    {
+        $logo = app(SiteBranding::class)->logo();
+
+        if ($logo === null) {
+            return null;
+        }
+
+        $showTitle = self::setting('branding_logo_display', 'logo_and_title') !== 'logo_only';
+
+        return [
+            'url' => $logo['url'],
+            'alt' => $showTitle ? '' : self::siteTitle(),
+            'width' => $logo['width'],
+            'height' => $logo['height'],
+            'show_title' => $showTitle,
+        ];
+    }
+
+    /**
+     * The site icon from Settings → Branding, or null to keep the default
+     * favicon.ico.
+     *
+     * @return array{url: string, type: string, size: int}|null
+     */
+    public static function siteIcon(): ?array
+    {
+        $icon = app(SiteBranding::class)->icon();
+
+        return $icon === null ? null : [
+            'url' => $icon['url'],
+            'type' => $icon['mime'],
+            'size' => $icon['width'],
+        ];
     }
 
     /** @return array{label: string, url: string}|null */

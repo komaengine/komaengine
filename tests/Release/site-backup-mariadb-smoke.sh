@@ -3,6 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# This check builds the local image through Compose and runs it by name, so a
+# published image exported in the shell must not reach Compose.
+unset KOMA_APP_IMAGE
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/koma-site-backup-mariadb.XXXXXX")"
 PROJECT="koma-site-backup-mariadb-$RANDOM-$$"
 ENV_FILE="$TEMP_ROOT/koma.docker.env"

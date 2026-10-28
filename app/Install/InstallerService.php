@@ -131,6 +131,8 @@ class InstallerService
                         'default_reading_direction' => $data['default_direction'],
                         'mature_gate' => (bool) $data['mature_gate'],
                         'discourage_search_engines' => (bool) $data['discourage_indexing'],
+                        // Off unless the administrator ticked it; see UpdateCheck.
+                        'update_checks' => (bool) ($data['check_for_updates'] ?? false),
                         'enabled_plugins' => [],
                         'media_disk' => 'local',
                     ]);

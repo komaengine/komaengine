@@ -11,9 +11,11 @@ use App\Models\Chapter;
 use App\Models\Genre;
 use App\Models\Series as SeriesModel;
 use App\Models\Tag;
+use App\Publishing\ChapterBulkPublishing;
+use App\Publishing\ChapterDeletionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -73,6 +75,17 @@ class Edit extends Component
 
     /** @var array<int, string> chapter id => app-local datetime input */
     public array $scheduleTimes = [];
+
+    /** @var list<int|string> chapter ids ticked for a bulk action */
+    public array $selectedChapters = [];
+
+    /**
+     * The result of the last chapter action, shown above the chapter list.
+     * A session flash would only appear on the next full page load.
+     */
+    public ?string $chapterNotice = null;
+
+    public bool $chapterNoticeIsError = false;
 
     /** @var array<int, string|null> chapter id => BCP 47 language code */
     public array $chapterLanguages = [];
@@ -328,6 +341,7 @@ class Edit extends Component
 
     public function togglePublish(int $chapterId): void
     {
+        Gate::authorize('edit_series');
         $chapter = $this->series?->chapters()->find($chapterId);
 
         if (! $chapter) {
@@ -345,6 +359,7 @@ class Edit extends Component
 
     public function scheduleChapter(int $chapterId): void
     {
+        Gate::authorize('edit_series');
         $validated = $this->validate([
             "scheduleTimes.{$chapterId}" => ['required', 'date_format:Y-m-d\TH:i', 'after:now'],
         ], [], ["scheduleTimes.{$chapterId}" => 'publication time']);
@@ -366,11 +381,12 @@ class Edit extends Component
             ->timezone(config('app.timezone'))
             ->format('Y-m-d\TH:i');
 
-        session()->flash('status', "Chapter {$chapter->displayNumber()} scheduled.");
+        $this->notifyChapters("Chapter {$chapter->displayNumber()} scheduled.");
     }
 
     public function cancelSchedule(int $chapterId): void
     {
+        Gate::authorize('edit_series');
         $chapter = $this->series?->chapters()->find($chapterId);
 
         if (! $chapter?->isScheduled()) {
@@ -380,23 +396,85 @@ class Edit extends Component
         $chapter->unpublish();
         unset($this->scheduleTimes[$chapterId]);
 
-        session()->flash('status', "Chapter {$chapter->displayNumber()} returned to draft.");
+        $this->notifyChapters("Chapter {$chapter->displayNumber()} returned to draft.");
     }
 
-    public function deleteChapter(int $chapterId): void
+    public function deleteChapter(int $chapterId, ChapterDeletionService $deletion): void
     {
-        $chapter = $this->series?->chapters()->with('pages')->find($chapterId);
+        Gate::authorize('edit_series');
+        $chapter = $this->series?->chapters()->find($chapterId);
 
         if (! $chapter) {
             return;
         }
 
-        foreach ($chapter->pages as $page) {
-            Storage::disk('media')->delete($page->image_path);
+        $cleanedUp = $deletion->delete($chapter);
+        unset($this->scheduleTimes[$chapterId], $this->chapterLanguages[$chapterId]);
+        $this->selectedChapters = array_values(array_diff($this->selectedChapters, [$chapterId, (string) $chapterId]));
+
+        $this->notifyChapters($cleanedUp
+            ? 'Chapter deleted.'
+            : 'Chapter deleted, but some page files could not be removed. Check the application log.', ! $cleanedUp);
+    }
+
+    public function applyChapterBulk(string $action, ChapterBulkPublishing $publishing, ChapterDeletionService $deletion): void
+    {
+        Gate::authorize('edit_series');
+
+        if (! $this->series) {
+            return;
         }
 
-        $chapter->delete();
-        session()->flash('status', 'Chapter deleted.');
+        $this->validate([
+            'selectedChapters' => ['required', 'array', 'min:1'],
+            'selectedChapters.*' => ['integer', 'distinct'],
+        ], [
+            'selectedChapters.required' => 'Select at least one chapter.',
+            'selectedChapters.min' => 'Select at least one chapter.',
+        ]);
+
+        abort_unless(in_array($action, ['publish', 'unpublish', 'delete'], true), 422);
+
+        $ids = array_map('intval', $this->selectedChapters);
+        $selected = count($ids);
+        $label = fn (int $count): string => $count === 1 ? '1 chapter' : "{$count} chapters";
+
+        if ($action === 'delete') {
+            $deleted = $deletion->deleteMany($this->series, $ids);
+            $message = $deleted === false
+                ? "Deleted {$label($selected)}, but some page files could not be removed. Check the application log."
+                : "Deleted {$label($deleted)}.";
+            $this->notifyChapters($message, $deleted === false);
+        } else {
+            $changed = $action === 'publish'
+                ? $publishing->publish($this->series, $ids)
+                : $publishing->unpublish($this->series, $ids);
+            $unchanged = $selected - $changed;
+            $state = $action === 'publish' ? 'published' : 'in draft';
+            $done = $action === 'publish'
+                ? "Published {$label($changed)}."
+                : "Returned {$label($changed)} to draft.";
+            $this->notifyChapters(match (true) {
+                $changed === 0 => ($selected === 1 ? 'The selected chapter was' : 'The selected chapters were')." already {$state}.",
+                $unchanged === 0 => $done,
+                default => "{$done} {$unchanged} ".($unchanged === 1 ? 'was' : 'were')." already {$state}.",
+            });
+        }
+
+        foreach ($ids as $id) {
+            unset($this->scheduleTimes[$id]);
+            if ($action === 'delete') {
+                unset($this->chapterLanguages[$id]);
+            }
+        }
+
+        $this->selectedChapters = [];
+    }
+
+    protected function notifyChapters(string $message, bool $error = false): void
+    {
+        $this->chapterNotice = $message;
+        $this->chapterNoticeIsError = $error;
     }
 
     public function render()

@@ -23,6 +23,12 @@ Usage: tests/Release/shared-hosting-smoke.sh [--current-ref HASH] [--previous-re
 Builds exact-ref flat-file ZIPs, installs a clean extracted package, upgrades an
 existing extracted package after a verified backup, and performs an exact-code
 rollback. This is Docker machine evidence, not real shared-host acceptance.
+
+The previous ref defaults to the parent of the current ref. To prove the
+upgrade from the last release, pass its maintainer freeze, for 1.0.1:
+  --previous-ref 55555d3c2f5a5367d21079da528a9c2637ae2834
+Each package is inspected with its own revision's inspect-artifact.sh; the
+previous package skips only the dependency audit.
 EOF
 }
 
@@ -150,17 +156,58 @@ build_package() {
     test -f "$archive"
     test "$(sed -n 's/^SOURCE_COMMIT=//p' "$log" | tail -n 1)" = "$ref"
 
-    docker run --rm \
-        --env KOMA_EXPECTED_SOURCE_COMMIT="$ref" \
-        --env KOMA_EXPECTED_RELEASE_VERSION="$version" \
-        --volume "$ROOT:/workspace:ro" \
-        --volume "$output:/output:ro" \
-        --workdir /workspace \
-        "$IMAGE" \
-        bash -lc "tests/Release/inspect-artifact.sh '/output/$(basename "$archive")'"
+    if [[ "$label" == previous ]]; then
+        inspect_previous_package "$ref" "$version" "$output" "$archive"
+    else
+        docker run --rm \
+            --env KOMA_EXPECTED_SOURCE_COMMIT="$ref" \
+            --env KOMA_EXPECTED_RELEASE_VERSION="$version" \
+            --volume "$ROOT:/workspace:ro" \
+            --volume "$output:/output:ro" \
+            --workdir /workspace \
+            "$IMAGE" \
+            bash -lc "tests/Release/inspect-artifact.sh '/output/$(basename "$archive")'"
+    fi
 
     printf '%s\n' "$archive" > "$TEMP_ROOT/$label-archive.path"
     hash_file "$archive" > "$TEMP_ROOT/$label-archive.sha256"
+}
+
+# A predecessor is held to its own packaging rules: its inspector replaces the
+# current one inside the container. Advisories published after its release are
+# expected, so only its dependency audit is skipped; inspectors from before the
+# KOMA_INSPECT_SKIP_AUDIT switch get a composer that ignores "audit".
+inspect_previous_package() {
+    local ref="$1"
+    local version="$2"
+    local output="$3"
+    local archive="$4"
+    local inspector="$TEMP_ROOT/previous-inspect-artifact.sh"
+    local shim="$TEMP_ROOT/previous-bin"
+
+    git -C "$ROOT" show "$ref:tests/Release/inspect-artifact.sh" > "$inspector"
+    chmod 755 "$inspector"
+    mkdir -p "$shim"
+    cat > "$shim/composer" <<'SHIM'
+#!/usr/bin/env bash
+if [[ "${1:-}" == audit ]]; then
+    exit 0
+fi
+exec "$KOMA_REAL_COMPOSER" "$@"
+SHIM
+    chmod 755 "$shim/composer"
+
+    docker run --rm \
+        --env KOMA_EXPECTED_SOURCE_COMMIT="$ref" \
+        --env KOMA_EXPECTED_RELEASE_VERSION="$version" \
+        --env KOMA_INSPECT_SKIP_AUDIT=1 \
+        --volume "$ROOT:/workspace:ro" \
+        --volume "$inspector:/workspace/tests/Release/inspect-artifact.sh:ro" \
+        --volume "$shim:/previous-bin:ro" \
+        --volume "$output:/output:ro" \
+        --workdir /workspace \
+        "$IMAGE" \
+        bash -lc "export KOMA_REAL_COMPOSER=\"\$(command -v composer)\" PATH=\"/previous-bin:\$PATH\"; tests/Release/inspect-artifact.sh '/output/$(basename "$archive")'"
 }
 
 extract_package() {
@@ -248,6 +295,16 @@ verify_state() {
     local destination="$2"
 
     runtime "$app" php /support/verify-recovery-fixture.php > "$destination"
+}
+
+assert_migrations() {
+    local state="$1"
+    local ref="$2"
+
+    diff -u \
+        <(git -C "$ROOT" ls-tree -r --name-only "$ref" database/migrations \
+            | sed -e 's#database/migrations/##' -e 's#\.php$##' | LC_ALL=C sort) \
+        <(jq -r '.migrations[]' "$state" | LC_ALL=C sort)
 }
 
 verify_doctor() {
@@ -359,6 +416,15 @@ stop_web() {
     docker container rm -f "$name" >/dev/null
 }
 
+# The package's .env turns KOMA_QUEUE_VIA_SCHEDULER on, so the single panel
+# cron command must publish due chapters and start a worker that drains the
+# queue and exits.
+exercise_one_cron() {
+    local app="$1"
+
+    runtime "$app" php /support/exercise-one-cron.php >/dev/null
+}
+
 exercise_background_work() {
     local app="$1"
 
@@ -423,6 +489,8 @@ CLEAN_WEB="$(cat "$TEMP_ROOT/clean-web.name")"
 assert_content_http "$CLEAN_WEB"
 restart_web "$CLEAN_WEB"
 stop_web "$CLEAN_WEB"
+STEP='checking clean one-cron queue and scheduler'
+exercise_one_cron "$CLEAN_APP"
 STEP='checking clean queue and scheduler'
 exercise_background_work "$CLEAN_APP"
 
@@ -466,7 +534,12 @@ runtime "$UPGRADE_APP" php artisan migrate --force --no-interaction > "$TEMP_ROO
 runtime "$UPGRADE_APP" php artisan koma:media:protect --no-interaction > "$TEMP_ROOT/upgrade-media-protect.txt"
 printf '1\n' > "$TEMP_ROOT/upgrade-migration-invocations.txt"
 verify_state "$UPGRADE_APP" "$TEMP_ROOT/upgrade-state.json"
-cmp "$TEMP_ROOT/source-state.json" "$TEMP_ROOT/upgrade-state.json"
+# The upgrade keeps every durable value; only the migration list grows, to
+# exactly the migrations each revision ships.
+cmp <(jq -S 'del(.migrations)' "$TEMP_ROOT/source-state.json") \
+    <(jq -S 'del(.migrations)' "$TEMP_ROOT/upgrade-state.json")
+assert_migrations "$TEMP_ROOT/source-state.json" "$PREVIOUS_REF"
+assert_migrations "$TEMP_ROOT/upgrade-state.json" "$CURRENT_REF"
 verify_doctor "$UPGRADE_APP" "$TEMP_ROOT/upgrade-doctor.json"
 
 STEP='checking upgraded content restart queue and scheduler'
@@ -541,7 +614,7 @@ jq -n \
       artifacts: {previous_sha256: $previous_archive_sha256, current_sha256: $current_archive_sha256},
       database: {live_source_sha256: $source_database_sha256, backup_sha256: $backup_database_sha256,
         rollback_sha256: $rollback_database_sha256, backup_matches_rollback: true},
-      gates: {clean_install: true, restart: true, upgrade_once: true, queue: true, scheduler: true,
+      gates: {clean_install: true, restart: true, upgrade_once: true, queue: true, scheduler: true, one_cron: true,
         verified_backup: true, rollback: true, real_control_panel: false},
       duration_seconds: $duration_seconds}' > "$EVIDENCE_INTERNAL"
 if [[ -n "$EVIDENCE_PATH" ]]; then

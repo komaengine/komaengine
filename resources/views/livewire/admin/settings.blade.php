@@ -8,6 +8,10 @@
         </div>
     @endif
 
+    @if ($brandingNotice)
+        <p role="status" data-testid="branding-notice" class="mb-4 rounded-[10px] bg-[oklch(0.7_0.13_150_/_0.12)] px-4 py-3 text-[13px] font-semibold text-[oklch(0.38_0.1_150)]">{{ $brandingNotice }}</p>
+    @endif
+
     {{-- `dep` mirrors the fields other fields watch, so a `depends` rule can
          show or hide its field without a server round-trip. --}}
     <form wire:submit="save" class="flex flex-col gap-4"
@@ -15,6 +19,18 @@
         @foreach ($sections as $section => $fields)
             <section class="rounded-2xl border border-line bg-white p-[22px]">
                 <h2 class="mb-4 font-display text-base font-extrabold">{{ $section }}</h2>
+
+                @if ($branding && $section === 'Logo')
+                    @include('livewire.admin.partials.branding-image', [
+                        'image' => $branding['logo'],
+                        'property' => 'logoUpload',
+                        'remove' => 'removeLogo',
+                        'help' => 'Shown in place of the theme\'s mark in the header and footer of every theme, the admin bar, and the sign-in page. PNG, JPEG, or WebP up to 4 MB; scaled to fit 512 × 256 pixels. Transparent backgrounds are kept.',
+                        'confirm' => 'Remove the logo? Every theme goes back to its own mark.',
+                        'previewClass' => 'max-h-16 max-w-full',
+                    ])
+                @endif
+
                 <div class="flex flex-col gap-4">
                     @foreach ($fields as $key => $field)
                         @php
@@ -111,6 +127,20 @@
                 @endif
             </section>
         @endforeach
+
+        @if ($branding)
+            <section class="rounded-2xl border border-line bg-white p-[22px]">
+                <h2 class="mb-4 font-display text-base font-extrabold">Site icon</h2>
+                @include('livewire.admin.partials.branding-image', [
+                    'image' => $branding['icon'],
+                    'property' => 'iconUpload',
+                    'remove' => 'removeIcon',
+                    'help' => 'The small image in browser tabs and bookmarks. A square image works best; anything else is cropped to a centred square and scaled to 512 × 512 pixels. Without one, the default icon is used.',
+                    'confirm' => 'Remove the site icon? Browsers go back to the default icon.',
+                    'previewClass' => 'h-12 w-12',
+                ])
+            </section>
+        @endif
 
         {{-- Media: storage panel --}}
         @if ($storage)

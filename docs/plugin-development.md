@@ -163,7 +163,7 @@ A plugin is a directory under `plugins/` in the application:
   it, for example:
 
   ```dockerfile
-  FROM ghcr.io/komaengine/komaengine:1.0.1
+  FROM ghcr.io/komaengine/komaengine:1.1.0
   COPY reading-note /var/www/html/plugins/reading-note
   ```
 
@@ -172,6 +172,11 @@ A plugin is a directory under `plugins/` in the application:
   [update](install/shared-hosting.md#update-and-rollback).
 
 Full-site backups include the files of every enabled plugin.
+
+Enabling or disabling a plugin asks running queue workers to exit after their
+current job, so the next worker loads the new plugin list. The Docker Compose
+worker, the Ubuntu systemd service, and the cron recipe all start a new worker
+on their own. A worker started by hand in a terminal has to be started again.
 
 ## Community, Pro, and managed-service boundary
 

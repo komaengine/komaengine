@@ -5,6 +5,10 @@
     @pointerup.window="finishPointerDrag($event)"
     @pointercancel.window="finishPointerDrag($event)"
 >
+    @if ($update)
+        @include('livewire.admin.partials.update-notice')
+    @endif
+
     <div class="relative mb-4 flex flex-wrap items-center justify-between gap-3">
         <p class="text-[13px] text-muted">Drag panels into your preferred order. Your dashboard is saved to this account.</p>
 

@@ -74,10 +74,12 @@ before you install it.
 ## Privacy
 
 The core does not collect, store, send, or display analytics data, and the
-server makes no outbound requests of its own. Visitors' browsers do make one
-kind: the admin, installer, and built-in themes load their fonts from Google
-Fonts. The core provides no payment, paywall, advertising, or object-storage
-service. Plugins that add remote scripts, advertising, analytics, or other
+server makes no outbound requests unless an administrator turns on update
+checks, which fetch one public file from komaengine.com once a day and send
+nothing about the site. `KOMA_UPDATE_CHECK=false` keeps them off. Visitors'
+browsers do make one kind of outside request: the admin, installer, and
+built-in themes load their fonts from Google Fonts. The core provides no
+payment, paywall, advertising, or object-storage service. Plugins that add remote scripts, advertising, analytics, or other
 providers own those integrations and their data, retention, consent, and
 third-party terms.
 

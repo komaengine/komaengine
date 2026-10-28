@@ -34,7 +34,7 @@ Composer, Node, or Git on the server. You need:
 - **Control of the document root**: you must be able to choose which folder the
   domain serves. KomaEngine's `public/` folder has to be that folder (see
   below).
-- **Cron jobs** (scheduled tasks) that can run every minute, for scheduled
+- **A cron job** (scheduled task) that can run every minute, for scheduled
   chapters and archive imports.
 - **HTTPS**. Every guide sets up a free Let's Encrypt certificate.
 
@@ -59,22 +59,6 @@ database password and the secret key. Each guide shows how to unpack the ZIP
 **next to** the web folder and point the domain at `public/` instead. The
 installer checks this and will not continue until the document root is
 correct.
-
-## Known issues in 1.0.1
-
-Neither stops the installation, and the guides already include the
-workarounds. Both are planned to be fixed in the next release.
-
-- **The health check reports `migrations FAIL` before installation**
-  ([#1](https://github.com/komaengine/komaengine/issues/1)). Before the web
-  installer has run, `php artisan koma:doctor --mode=bootstrap` shows
-  `migrations FAIL` because the database is still empty. If every other line
-  is `OK`, continue: the installer creates the tables.
-- **You are asked to sign in again right after installing**
-  ([#2](https://github.com/komaengine/komaengine/issues/2)). Add
-  `SESSION_COOKIE=komaengine_session` to `.env` before running the installer
-  and this does not happen. If you have already installed without it, sign in
-  once with the administrator email and password you just chose.
 
 ## After installing
 

@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# KOMA_INSPECT_SKIP_AUDIT=1 skips only the dependency audit. The upgrade smoke
+# sets it for an older predecessor package, whose dependencies may have
+# advisories published after its release; current packages are always audited.
 ARCHIVE="${1:?Usage: inspect-artifact.sh /path/to/komaengine.zip}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/koma-artifact-inspect.XXXXXX")"
@@ -203,7 +206,10 @@ fi
     cd "$PACKAGE"
     shasum -a 256 -c KOMA-FILES.sha256 >/dev/null
     php -r "require 'vendor/autoload.php';"
-    composer audit --locked --no-dev --no-interaction >/dev/null
+    if [[ "${KOMA_INSPECT_SKIP_AUDIT:-}" != 1 ]]; then
+        composer audit --locked --no-dev --no-interaction >/dev/null
+    fi
 )
+php "$ROOT/scripts/release/assert-dist-vendor.php" "$PACKAGE/vendor" >/dev/null
 
 printf 'Artifact inspection passed: %s\n' "$(basename "$ARCHIVE")"

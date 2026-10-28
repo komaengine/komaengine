@@ -3,6 +3,7 @@
     $accent = $activeTheme['accent'] ?? null;
     $matureAccess = app(\App\Support\MatureContentAccess::class);
     $matureContentHidden = $matureAccess->hidesMature(request());
+    $logo = \App\Support\Koma::logo();
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -28,6 +29,7 @@
     @if ($accent)
         <style>:root { --accent: {!! $accent !!}; }</style>
     @endif
+    <x-site-icon />
     @stack('head')
 </head>
 <body>
@@ -41,8 +43,12 @@
     <header class="site-header">
         <div class="ks-wrap header-inner">
             <a href="{{ route('home') }}" class="brand" aria-label="{{ \App\Support\Koma::siteTitle() }} home">
-                <svg class="brand-flame" viewBox="0 0 32 38" aria-hidden="true"><path d="M13.5 37C4.4 34.7.2 28.5 2.3 20.6c1.2-4.5 4.5-7.7 8.8-11.6-.4 4.8 1.9 7.5 4.1 7.4 2.7-.2 4.2-5 3-13.5 8.6 6.4 12.3 14.3 10.4 22.1C26.8 32.2 20.2 37 13.5 37Z"/><path class="flame-cut" d="M15.5 33c-4.6-1.3-6.8-4.5-5.5-8.4.8-2.3 2.5-4 4.8-6.1-.2 2.5 1 4 2.2 3.8 1.4-.2 2.2-2.5 1.7-6.7 4.2 3.2 5.8 7.1 4.7 10.9-1 3.7-4.4 6.5-7.9 6.5Z"/></svg>
-                <span>{{ \App\Support\Koma::siteTitle() }}</span>
+                @if ($logo)
+                    <img class="brand-logo" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">
+                @else
+                    <svg class="brand-flame" viewBox="0 0 32 38" aria-hidden="true"><path d="M13.5 37C4.4 34.7.2 28.5 2.3 20.6c1.2-4.5 4.5-7.7 8.8-11.6-.4 4.8 1.9 7.5 4.1 7.4 2.7-.2 4.2-5 3-13.5 8.6 6.4 12.3 14.3 10.4 22.1C26.8 32.2 20.2 37 13.5 37Z"/><path class="flame-cut" d="M15.5 33c-4.6-1.3-6.8-4.5-5.5-8.4.8-2.3 2.5-4 4.8-6.1-.2 2.5 1 4 2.2 3.8 1.4-.2 2.2-2.5 1.7-6.7 4.2 3.2 5.8 7.1 4.7 10.9-1 3.7-4.4 6.5-7.9 6.5Z"/></svg>
+                @endif
+                @if (! $logo || $logo['show_title'])<span>{{ \App\Support\Koma::siteTitle() }}</span>@endif
             </a>
 
             <nav class="primary-nav" aria-label="Primary navigation">

@@ -2,21 +2,26 @@
 
 namespace App\Livewire\Admin;
 
+use App\Branding\SiteBranding;
 use App\Engine\Settings\Settings as SettingsStore;
 use App\Engine\Settings\SettingsConfigBridge;
 use App\Engine\Settings\SettingsSchema;
+use App\Media\ImageProcessingException;
 use App\Models\Series;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Spatie\Permission\Models\Role;
 use Throwable;
 
 #[Layout('components.layouts.admin')]
 class Settings extends Component
 {
+    use WithFileUploads;
+
     /**
      * Stand-in for a stored credential.
      *
@@ -29,6 +34,18 @@ class Settings extends Component
 
     /** @var array<string, mixed> */
     public array $values = [];
+
+    /** A logo chosen on the Branding tab; stored as soon as it is picked. */
+    public $logoUpload;
+
+    /** A site icon chosen on the Branding tab; stored as soon as it is picked. */
+    public $iconUpload;
+
+    /**
+     * The result of the last logo or icon change, shown on the Branding tab.
+     * A session flash would show again on the next page load.
+     */
+    public ?string $brandingNotice = null;
 
     public function mount(SettingsStore $settings, ?string $tab = null): void
     {
@@ -143,6 +160,66 @@ class Settings extends Component
         session()->flash('status', $mailer === 'log'
             ? 'Mail is set to write to the log, so the test message was written to storage/logs rather than sent to '.$recipient.'.'
             : 'A test message was sent to '.$recipient.'.');
+    }
+
+    public function updatedLogoUpload(): void
+    {
+        $this->storeBranding('logoUpload', 'logo', 16, fn (SiteBranding $branding) => $branding->storeLogo($this->logoUpload));
+    }
+
+    public function updatedIconUpload(): void
+    {
+        $this->storeBranding('iconUpload', 'site icon', 32, fn (SiteBranding $branding) => $branding->storeIcon($this->iconUpload));
+    }
+
+    public function removeLogo(SiteBranding $branding): void
+    {
+        Gate::authorize('manage_settings');
+        $branding->removeLogo();
+        $this->brandingNotice = 'Logo removed. The theme shows its own mark again.';
+    }
+
+    public function removeIcon(SiteBranding $branding): void
+    {
+        Gate::authorize('manage_settings');
+        $branding->removeIcon();
+        $this->brandingNotice = 'Site icon removed. Browsers use the default icon again.';
+    }
+
+    /** @param  callable(SiteBranding): void  $store */
+    protected function storeBranding(string $property, string $label, int $minSide, callable $store): void
+    {
+        Gate::authorize('manage_settings');
+        $this->brandingNotice = null;
+
+        $this->validate([
+            $property => [
+                'required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096',
+                "dimensions:min_width={$minSide},min_height={$minSide},max_width=8000,max_height=8000",
+            ],
+        ], [
+            $property.'.image' => 'Upload a PNG, JPEG, or WebP image.',
+            $property.'.mimes' => 'Upload a PNG, JPEG, or WebP image.',
+            // Also what a renamed non-image gets: its size cannot be read.
+            $property.'.dimensions' => "Upload a PNG, JPEG, or WebP image between {$minSide} and 8,000 pixels on each side.",
+        ], [$property => $label]);
+
+        try {
+            $store(app(SiteBranding::class));
+        } catch (ImageProcessingException $exception) {
+            $this->addError($property, $exception->getMessage());
+
+            return;
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->addError($property, 'The '.$label.' could not be stored. Nothing was changed.');
+
+            return;
+        } finally {
+            $this->reset($property);
+        }
+
+        $this->brandingNotice = ucfirst($label).' saved.';
     }
 
     protected function siteTitle(): string
@@ -265,6 +342,10 @@ class Settings extends Component
             'sections' => $sections,
             'dependencyKeys' => SettingsSchema::dependencyKeys(),
             'storage' => $this->tab === 'media' ? $this->storageInfo() : null,
+            'branding' => $this->tab === 'branding' ? [
+                'logo' => app(SiteBranding::class)->logo(),
+                'icon' => app(SiteBranding::class)->icon(),
+            ] : null,
         ]);
     }
 

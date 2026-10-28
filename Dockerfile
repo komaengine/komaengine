@@ -4,7 +4,7 @@
 # frontend newer than the one built into BuildKit, so we use the built-in.
 
 # ---- Stage 1: compile front-end assets with Vite/Tailwind ----
-FROM node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS assets
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS assets
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -13,9 +13,9 @@ COPY resources resources
 RUN npm run build
 
 # ---- Stage 2: runtime (Apache + PHP-FPM 8.4) ----
-FROM php:8.4.26-fpm-bookworm@sha256:6bfef8e416977aa41f48e3e42a40c1e08050d24e4a938c6edb421400bff24601 AS runtime
+FROM php:8.4.27-fpm-bookworm@sha256:1e3a12968ba1eeba4c23f4e8e550b3777817330c58cce1e53f4bd97f20a15671 AS runtime
 
-ARG KOMA_RELEASE_VERSION=1.0.1
+ARG KOMA_RELEASE_VERSION=1.1.0
 ARG KOMA_RELEASE_COMMIT=unavailable
 ARG KOMA_RELEASE_DIRTY=unknown
 ARG KOMA_RELEASE_BUILD_ID=development
@@ -48,19 +48,39 @@ RUN set -eu; \
         [ "$KOMA_RELEASE_BUILD_ID" = "${release_version}+$(printf '%.12s' "$KOMA_RELEASE_COMMIT")" ]; \
     fi
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        apache2 gosu unzip git mariadb-client \
+# Debian's published updates are applied first, so a security fix does not
+# wait for the pinned base image to be rebuilt upstream. Extensions are
+# compiled here, then the compilers, headers, and the kernel headers they pull
+# in (linux-libc-dev) are removed: only the shared libraries the PHP binaries
+# and extensions link against stay. No git: Composer must use dist archives,
+# and a fallback to a source checkout fails instead.
+RUN set -eu; \
+    apt-get update; \
+    apt-get upgrade -y --no-install-recommends; \
+    apt-get install -y --no-install-recommends apache2 gosu unzip mariadb-client; \
+    saved_manual="$(apt-mark showmanual | grep -vxE 'autoconf|dpkg-dev|file|g\+\+|gcc|libc6-dev|make|pkg-config|re2c')"; \
+    apt-get install -y --no-install-recommends \
         libpng-dev libjpeg62-turbo-dev libfreetype6-dev libwebp-dev \
-        libzip-dev libicu-dev libonig-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install -j"$(nproc)" \
-        pdo_mysql mbstring gd zip intl bcmath exif opcache pcntl \
-    && (a2dismod mpm_prefork 2>/dev/null || true) \
-    && a2enmod mpm_event proxy proxy_fcgi rewrite headers expires \
-    && echo "ServerName localhost" >> /etc/apache2/apache2.conf \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+        libzip-dev libicu-dev libonig-dev; \
+    docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp; \
+    docker-php-ext-install -j"$(nproc)" \
+        pdo_mysql mbstring gd zip intl bcmath exif opcache pcntl; \
+    apt-mark auto '.*' > /dev/null; \
+    apt-mark manual $saved_manual > /dev/null; \
+    find /usr/local -type f -executable -exec ldd '{}' ';' 2>/dev/null \
+        | awk '/=>/ { so = $(NF-1); if (index(so, "/usr/local/") == 1) { next }; gsub("^/(usr/)?", "", so); printf "*%s\n", so }' \
+        | sort -u | xargs -r dpkg-query --search | cut -d: -f1 | sort -u | xargs -r apt-mark manual > /dev/null; \
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
+    php -r 'foreach (["gd", "zip", "intl", "pdo_mysql", "mbstring", "bcmath", "exif", "pcntl", "Zend OPcache"] as $e) { if (! extension_loaded($e)) { fwrite(STDERR, "PHP extension did not load: $e\n"); exit(1); } }'; \
+    if dpkg-query -W -f='${Status}' linux-libc-dev 2>/dev/null | grep -q 'install ok installed'; then \
+        echo 'Build-only kernel headers are still installed.' >&2; exit 1; \
+    fi; \
+    (a2dismod mpm_prefork 2>/dev/null || true); \
+    a2enmod mpm_event proxy proxy_fcgi rewrite headers expires; \
+    echo "ServerName localhost" >> /etc/apache2/apache2.conf; \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2.9.7@sha256:02062f7719ec9433a9d4256cfba1c792db96dc9db60a4a92e48264c9e166b877 /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.9.8@sha256:b09bccd91a78fe8a9ab4b33d707b862e8fe54fec17782e32683ad2a69c46867d /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
@@ -73,7 +93,10 @@ RUN chmod +x /usr/local/bin/koma-entrypoint
 
 # Install PHP dependencies first for better layer caching.
 COPY composer.json composer.lock package-lock.json ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-interaction
+COPY scripts/release/assert-dist-vendor.php /tmp/assert-dist-vendor.php
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-interaction \
+    && php /tmp/assert-dist-vendor.php vendor \
+    && rm /tmp/assert-dist-vendor.php
 
 # Application source is an allowlist. Never replace this with COPY . .;
 # ignored local databases and test manga must not enter a release image.
@@ -110,7 +133,7 @@ RUN set -eu; \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R ug+rwX storage bootstrap/cache \
     && rm -f /usr/bin/composer \
-    && apt-get purge -y --auto-remove git unzip \
+    && apt-get purge -y --auto-remove unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

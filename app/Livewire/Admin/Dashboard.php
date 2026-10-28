@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin;
 
+use App\Engine\Updates\UpdateCheck;
 use App\Models\Chapter;
 use App\Models\Comment;
 use App\Models\CommentReport;
@@ -124,7 +125,12 @@ class Dashboard extends Component
             ->only($this->availableWidgetIds($user))
             ->all();
 
+        $updates = app(UpdateCheck::class);
+
         return view('livewire.admin.dashboard', [
+            // Only administrators see the update notice.
+            'update' => $user->can('manage_settings') ? $updates->status() : null,
+            'updateGuideUrl' => $updates->updateGuideUrl(),
             'stats' => $stats,
             'contentStatus' => $contentStatus,
             'recentChapters' => $recentChapters,

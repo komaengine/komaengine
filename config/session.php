@@ -1,7 +1,5 @@
 <?php
 
-use Illuminate\Support\Str;
-
 return [
 
     /*
@@ -127,10 +125,10 @@ return [
     |
     */
 
-    'cookie' => env(
-        'SESSION_COOKIE',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_session'
-    ),
+    // A fixed default, not one derived from APP_NAME: the installer writes the
+    // site title into APP_NAME, and a renamed cookie would sign out the
+    // administrator it just signed in.
+    'cookie' => env('SESSION_COOKIE', 'komaengine_session'),
 
     /*
     |--------------------------------------------------------------------------

@@ -5,6 +5,7 @@ namespace App\Engine\Plugins;
 use App\Engine\Extensions\ExtensionCompatibility;
 use App\Engine\Plugins\Contracts\Plugin;
 use App\Engine\Settings\Settings;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -120,15 +121,36 @@ class PluginManager
         $this->settings->set('enabled_plugins', array_values(
             array_unique([...$this->enabledSlugs(), $slug]),
         ));
+        $this->restartQueueWorkers();
 
         return true;
     }
 
     public function disable(string $slug): void
     {
+        if (! $this->isEnabled($slug)) {
+            return;
+        }
+
         $this->settings->set('enabled_plugins', array_values(
             array_diff($this->enabledSlugs(), [$slug]),
         ));
+        $this->restartQueueWorkers();
+    }
+
+    /**
+     * A running queue worker loaded the plugin list when it started, so it
+     * would keep importing archives without a newly enabled adapter (or with
+     * a disabled one). Ask workers to exit after their current job; Docker,
+     * systemd, and the cron recipe all start a fresh one.
+     */
+    protected function restartQueueWorkers(): void
+    {
+        try {
+            Artisan::call('queue:restart');
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     /**

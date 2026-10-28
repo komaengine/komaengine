@@ -3,6 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# This check builds the local image through Compose and runs it by name, so a
+# published image exported in the shell must not reach Compose.
+unset KOMA_APP_IMAGE
 . "$ROOT/scripts/release/image-lock.env"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/koma-backup-restore-mariadb.XXXXXX")"
 SOURCE_PROJECT="koma-recovery-source-$RANDOM-$$"

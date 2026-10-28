@@ -297,51 +297,51 @@ DB_USERNAME=komaengine
 DB_PASSWORD="USE_A_LONG_RANDOM_PASSWORD"
 
 SESSION_DRIVER=file
-SESSION_COOKIE=komaengine_session
 CACHE_STORE=file
 QUEUE_CONNECTION=database
 DB_QUEUE_RETRY_AFTER=3660
+KOMA_QUEUE_VIA_SCHEDULER=false
 FILESYSTEM_DISK=public
 MEDIA_DISK_DRIVER=local
 ```
 
-Lines that are missing from the file, such as `SESSION_COOKIE` and
-`MEDIA_DISK_DRIVER`, can go anywhere. `SESSION_COOKIE` keeps you signed in when
-the installer finishes (see [known issues](README.md#known-issues-in-101)).
-Leave `APP_KEY` empty; the next command fills it in. Save and exit
+`KOMA_QUEUE_VIA_SCHEDULER=false` matters: the template turns it on for hosting
+panels, where the scheduler also starts the queue worker. Here step 8 runs a
+separate worker service instead. A line that is missing from the file, such as
+`MEDIA_DISK_DRIVER`, can go anywhere. Leave `APP_KEY` empty; the next command fills it in. Save and exit
 (`Ctrl+O`, `Enter`, `Ctrl+X`).
 
-Now generate the site's secret key, link public files, prepare protected manga
-storage, and run the health check, all as the PHP account:
+Link public files to the shared storage (the release folder belongs to root,
+so this one needs `sudo`), then let KomaEngine do the rest as the PHP account:
+generate the site's secret key, prepare protected manga storage, and run the
+health check:
 
 ```bash
 cd "$KOMA_RELEASE"
-sudo -u www-data php artisan key:generate --force
 sudo ln -s "$KOMA_SHARED/storage/app/public" "$KOMA_RELEASE/public/storage"
-sudo -u www-data php artisan koma:media:protect
-sudo -u www-data php artisan koma:doctor --mode=bootstrap
+sudo -u www-data php artisan koma:setup
 ```
 
-Run `key:generate` only this once. A new key on an existing site signs everyone
-out and makes encrypted data unreadable.
-
-The health check prints one line per check. Before the web installer has run,
-this is the expected result:
+`koma:setup` generates a key only when `.env` has none, so running it again
+later is safe. (Replacing the key of an existing site would sign everyone out
+and make encrypted data unreadable.) It ends with the health check. Before the
+web installer has run, this is the expected result:
 
 ```text
-app_key          OK
-media_driver     OK
-database         OK
-migrations       FAIL
-runtime_paths    OK
-cache            OK
-storage_link     OK
-legacy_public_media_absent OK
+Readiness (koma:doctor --mode=bootstrap):
+  app_key                    OK
+  media_driver               OK
+  database                   OK
+  migrations                 PENDING
+  runtime_paths              OK
+  cache                      OK
+  storage_link               OK
+  legacy_public_media_absent OK
 ```
 
-`migrations FAIL` is normal at this point: the web installer creates the
-database tables in step 7. Any other `FAIL` needs fixing first; see
-[Troubleshooting](troubleshooting.md).
+`migrations PENDING` is normal at this point: the web installer creates the
+database tables in step 7. A step that says `FAILED`, or any check that says
+`FAIL`, needs fixing first; see [Troubleshooting](troubleshooting.md).
 
 The installer saves your choices into `.env`, so for the duration of the
 installation the PHP account must be able to write to the release folder. Grant
@@ -505,7 +505,16 @@ storage world-writable (`chmod 777`).
 KomaEngine needs two things running in the background: a **queue worker** that
 processes archive imports, and the **scheduler**, which publishes scheduled
 chapters every minute. The package includes a script that sets both up as
-systemd services.
+systemd services. Check that `.env` has `KOMA_QUEUE_VIA_SCHEDULER=false`
+(step 5) first, so the scheduler does not start extra workers beside the
+service:
+
+```bash
+sudo grep '^KOMA_QUEUE_VIA_SCHEDULER=' /srv/komaengine/current/.env
+```
+
+It should print `KOMA_QUEUE_VIA_SCHEDULER=false`. A site set up before 1.1.0
+may print nothing, which also means off.
 
 Preview what it will create, without changing anything:
 

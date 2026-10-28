@@ -3,6 +3,7 @@
     $accent = $activeTheme['accent'] ?? null;
     $matureAccess = app(\App\Support\MatureContentAccess::class);
     $matureContentHidden = $matureAccess->hidesMature(request());
+    $logo = \App\Support\Koma::logo();
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -21,12 +22,13 @@
     <meta name="twitter:card" content="summary_large_image">
     <link rel="stylesheet" href="@themeAsset('theme.css')">
     @if ($accent)<style>:root { --accent: {!! $accent !!}; }</style>@endif
+    <x-site-icon />
     @stack('head')
 </head>
 <body>
     <a class="skip-link" href="#content">Skip to content</a>
     <aside class="site-rail" aria-label="Site navigation">
-        <a class="rail-brand" href="{{ route('home') }}" aria-label="{{ \App\Support\Koma::siteTitle() }} home"><span class="rail-mark">墨</span><span>{{ \App\Support\Koma::siteTitle() }}</span></a>
+        <a class="rail-brand" href="{{ route('home') }}" aria-label="{{ \App\Support\Koma::siteTitle() }} home">@if ($logo)<img class="brand-logo" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">@else<span class="rail-mark">墨</span>@endif @if (! $logo || $logo['show_title'])<span>{{ \App\Support\Koma::siteTitle() }}</span>@endif</a>
         <p class="rail-label">Discover</p>
         <nav class="rail-nav" aria-label="Primary navigation">
             <a href="{{ route('home') }}" @class(['active' => request()->routeIs('home')])><span aria-hidden="true">⌂</span>Home</a>
@@ -48,7 +50,7 @@
                     @else<a href="{{ route('login') }}">Sign in</a>@endauth
                 </nav>
             </details>
-            <a class="mobile-brand" href="{{ route('home') }}"><span>墨</span>{{ \App\Support\Koma::siteTitle() }}</a>
+            <a class="mobile-brand" href="{{ route('home') }}">@if ($logo)<img class="brand-logo small" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">@if ($logo['show_title']){{ \App\Support\Koma::siteTitle() }}@endif @else<span>墨</span>{{ \App\Support\Koma::siteTitle() }}@endif</a>
             <span class="topbar-path">Catalog / {{ request()->routeIs('home') ? 'Home' : (request()->routeIs('browse') ? 'Titles' : 'Reading') }}</span>
             <form action="{{ route('browse') }}" method="GET" class="top-search" role="search">
                 <label class="sr-only" for="sumi-search">Search manga</label>

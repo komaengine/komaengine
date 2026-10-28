@@ -5,7 +5,6 @@ use App\Livewire\Admin\ArchiveImporter;
 use App\Models\SeriesArchiveImport;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Queue;
@@ -80,15 +79,15 @@ test('another editor cannot retry or discard an import they do not own', functio
     $other = User::factory()->create();
     $other->assignRole('Editor');
 
-    expect(fn () => Livewire::actingAs($other)
+    Livewire::actingAs($other)
         ->test(ArchiveImporter::class)
-        ->call('retryImport', $record->id))
-        ->toThrow(ModelNotFoundException::class);
+        ->call('retryImport', $record->id)
+        ->assertStatus(404);
 
-    expect(fn () => Livewire::actingAs($other)
+    Livewire::actingAs($other)
         ->test(ArchiveImporter::class)
-        ->call('discardSource', $record->id))
-        ->toThrow(ModelNotFoundException::class);
+        ->call('discardSource', $record->id)
+        ->assertStatus(404);
 
     expect(Storage::disk('local')->exists($record->source_path))->toBeTrue();
     Queue::assertNothingPushed();

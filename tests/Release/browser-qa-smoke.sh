@@ -238,6 +238,19 @@ for project in "${PROJECTS[@]}"; do
 
     STEP="$project queue and scheduler startup"
     compose "$compose_project" "$env_file" --profile runtime up -d worker scheduler
+    # The health journey expects a scheduler heartbeat, which is written on the
+    # scheduler's first minute tick; a fast journey can reach it sooner.
+    docker cp "$ROOT/tests/Browser/support/scheduler-seen.php" "$app_container:/tmp/koma-qa-scheduler-seen.php"
+    scheduler_deadline=$((SECONDS + 120))
+    until compose "$compose_project" "$env_file" exec -T app \
+        gosu www-data php /tmp/koma-qa-scheduler-seen.php; do
+        [[ "$SECONDS" -lt "$scheduler_deadline" ]] || {
+            echo 'The scheduler did not record a run within two minutes.' >&2
+            exit 1
+        }
+        sleep 2
+    done
+    compose "$compose_project" "$env_file" exec -T app rm -f /tmp/koma-qa-scheduler-seen.php
 
     STEP="$project publishing and reader journey"
     docker run --rm \

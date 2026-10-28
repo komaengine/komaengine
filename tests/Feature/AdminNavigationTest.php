@@ -8,7 +8,9 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
-    $this->admin = User::factory()->create();
+    // A fixed name: a random one such as "O'Reilly" is escaped in the HTML and
+    // would not match the raw attribute asserted below.
+    $this->admin = User::factory()->create(['name' => 'Avery Admin']);
     $this->admin->assignRole('Administrator');
 });
 
@@ -95,8 +97,9 @@ test('updates screen is restricted to administrators and describes its current s
     $this->actingAs($this->admin)
         ->get(route('admin.updates'))
         ->assertOk()
-        ->assertSee('Automatic updates will live here')
-        ->assertSee('Not configured');
+        ->assertSee('Update notice')
+        ->assertSee('Enable update checks')
+        ->assertSee('KomaEngine never updates itself.');
 
     $editor = User::factory()->create();
     $editor->assignRole('Editor');

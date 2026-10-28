@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Archives\ArchiveException;
+use App\Archives\ArchivePublishingMode;
 use App\Archives\ImportedArchive;
 use App\Archives\SeriesArchiveImporter;
 use App\Models\Series;
@@ -106,6 +107,7 @@ class ImportSeriesArchive implements ShouldQueue
                         'counts' => json_encode($counts, JSON_THROW_ON_ERROR),
                     ]);
                 },
+                $record->publishing_mode ?? ArchivePublishingMode::AUTOMATIC,
             );
 
             unset(self::$importing[$this->importId]);

@@ -3,6 +3,7 @@
 use App\Engine\Settings\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
 uses(RefreshDatabase::class);
@@ -33,7 +34,20 @@ test('bootstrap doctor passes before installer completion', function () {
     expect($status)->toBe(0)
         ->and($payload['mode'])->toBe('bootstrap')
         ->and($payload['ready'])->toBeTrue()
-        ->and($payload['checks'])->not->toContain(false);
+        ->and($payload['checks'])->not->toContain(false)
+        ->and($payload)->not->toHaveKey('pending');
+});
+
+test('bootstrap doctor fails a partially migrated database', function () {
+    DB::table('migrations')->orderByDesc('id')->limit(1)->delete();
+
+    $status = Artisan::call('koma:doctor', ['--mode' => 'bootstrap', '--json' => true]);
+    $payload = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($status)->toBe(1)
+        ->and($payload['ready'])->toBeFalse()
+        ->and($payload['checks']['migrations'])->toBeFalse()
+        ->and($payload)->not->toHaveKey('pending');
 });
 
 test('operational doctor requires the terminal install marker', function () {

@@ -147,10 +147,22 @@ It reads only the uploaded ZIP, derives media hashes, MIME types and dimensions
 while staging, and then passes the normalized v2 manifest through the same
 strict validator and transactional importer as native archives.
 
-Because external manifests do not provide compatible visibility or rating
-metadata, these imports are private, mature, and draft by default. Reading
-direction and lifecycle status use explicit configured defaults and should be
-reviewed during acceptance.
+External manifests carry no visibility, chapter status, or rating metadata.
+Imported galleries are rated mature. Their visibility and chapter status come
+from the import form's **Publishing** choice:
+
+- **Automatic** (the default) and **Use site defaults** apply the site's
+  **Default visibility** and **Default status on upload** settings (private and
+  draft unless an administrator changed them). Chapters published this way get
+  the import time as their publication date.
+- **Private drafts** always imports a private series with draft chapters.
+
+For native Koma archives, **Automatic** keeps the archive's own visibility and
+chapter states; **Use site defaults** and **Private drafts** override them.
+Imports write their rows without firing the `series.saved`, `chapter.saved`,
+or `chapter.published` hooks, whichever choice is made. Reading direction and
+lifecycle status use explicit configured defaults and should be reviewed
+during acceptance.
 
 ### Teaching the importer another gallery format
 

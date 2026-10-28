@@ -52,6 +52,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: -0.0
 }
 .site-header .bar { display: flex; align-items: center; gap: 22px; height: 62px; }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 800; font-size: 18px; }
+/* Site logo from Settings → Branding: never stretched, capped by height. */
+.brand-logo { display: block; flex: 0 0 auto; width: auto; height: auto; max-width: 180px; max-height: 36px; object-fit: contain; }
+.brand-logo.small { max-width: 140px; max-height: 26px; }
 .brand .glyph {
     display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
     background: var(--accent); color: #fff; font-size: 18px;
@@ -144,7 +147,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: -0.0
     color: rgba(255,255,255,0.5); font-family: var(--display); font-weight: 800; font-size: 15px; overflow: hidden; }
 .update .cv img { width: 100%; height: 100%; object-fit: cover; }
 .update .info { min-width: 0; flex: 1; }
-.update .info .t { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Inline, so it wraps rather than clipping; only a title longer than the card's line ever wraps. */
+.update .info .t { font-weight: 700; font-size: 13.5px; overflow-wrap: anywhere; }
 .update .info .c { font-size: 13px; color: var(--accent); font-weight: 600; }
 .update .info .time { font-size: 11.5px; color: var(--faint); }
 
@@ -372,6 +376,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: -0.0
     .site-header .bar { gap: 12px; }
     .site-header .brand { flex: 1; min-width: 0; font-size: 16px; }
     .site-header .brand .glyph { flex: 0 0 auto; }
+    .site-header .brand-logo { max-width: 140px; max-height: 32px; }
     .site-header .brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .site-header .header-actions { flex: 0 0 auto; gap: 6px; margin-left: 0; }
     .site-header .header-actions .btn { padding-inline: 10px; }

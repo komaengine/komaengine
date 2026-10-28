@@ -9,14 +9,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <x-site-icon />
     @livewireStyles
 </head>
 <body class="h-full bg-paper text-[#1c1a18]">
     <div class="flex min-h-full flex-col items-center justify-center px-4 py-12">
+        @php($siteLogo = \App\Support\Koma::logo())
         <a href="{{ url('/') }}" class="mb-7 flex flex-col items-center gap-3">
-            <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-koma text-2xl font-extrabold text-white shadow-lg shadow-koma/30" style="font-family:var(--font-display)">コ</span>
+            @if ($siteLogo)
+                <img src="{{ $siteLogo['url'] }}" alt="{{ $siteLogo['alt'] }}" width="{{ $siteLogo['width'] }}" height="{{ $siteLogo['height'] }}" class="h-auto max-h-16 w-auto max-w-[240px] object-contain">
+            @else
+                <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-koma text-2xl font-extrabold text-white shadow-lg shadow-koma/30" style="font-family:var(--font-display)">コ</span>
+            @endif
             <span class="text-center">
-                <span class="block font-display text-xl font-extrabold tracking-tight">{{ \App\Support\Koma::setting('site_title', config('app.name')) }}</span>
+                @if (! $siteLogo || $siteLogo['show_title'])
+                    <span class="block font-display text-xl font-extrabold tracking-tight">{{ \App\Support\Koma::setting('site_title', config('app.name')) }}</span>
+                @endif
                 <span class="mt-0.5 block text-[12.5px] text-faint">Community Edition</span>
             </span>
         </a>

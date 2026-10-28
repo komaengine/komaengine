@@ -2,12 +2,15 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 
 const axeTags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+// Firefox also logs a font download cancelled by navigation (NS_BINDING_ABORTED,
+// 0x804B0002) as a console error; the failed request itself is ignored below.
+const firefoxAbortedFontDownload = /downloadable font: download failed .*status=2152398850 /;
 
 export function observeRuntime(page) {
     const failures = [];
 
     page.on('console', (message) => {
-        if (message.type() === 'error') {
+        if (message.type() === 'error' && !firefoxAbortedFontDownload.test(message.text())) {
             failures.push(`console: ${message.text()}`);
         }
     });
@@ -82,6 +85,16 @@ export async function assertPageQuality(page, testInfo, runtimeFailures, label) 
     });
 
     expect(accessibility.violations, `${label} has automated WCAG A/AA violations`).toEqual([]);
+
+    // axe reports text it cannot place on a single background as incomplete, not as a
+    // violation, so a contrast failure there would otherwise pass unnoticed.
+    const uncheckedContrast = accessibility.incomplete
+        .filter((rule) => rule.id === 'color-contrast')
+        .flatMap((rule) => rule.nodes)
+        .filter((node) => node.any.some((check) => check.data?.messageKey === 'bgOverlap'))
+        .map((node) => node.target.join(' '));
+
+    expect(uncheckedContrast, `${label} has text axe cannot check for contrast (bgOverlap)`).toEqual([]);
     expect(runtimeFailures, `${label} emitted browser/runtime failures`).toEqual([]);
 }
 

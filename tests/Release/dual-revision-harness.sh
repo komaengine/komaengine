@@ -4,10 +4,39 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/scripts/release/image-lock.env"
-APPROVED_PREDECESSOR='83eeb5911f617bf79b4e7e899a2cd69001803484'
+# The 1.0.1 maintainer freeze: the last published release.
+APPROVED_PREDECESSOR='55555d3c2f5a5367d21079da528a9c2637ae2834'
 MODE='dry-run'
 PREDECESSOR_REF="$APPROVED_PREDECESSOR"
 CURRENT_REF=''
+
+# Count the migrations a revision ships, so expectations follow the tree.
+migration_count() {
+    git -C "$ROOT" ls-tree -r --name-only "$1" database/migrations | grep -c '\.php$'
+}
+
+# The migrations the current ref adds over the predecessor, oldest first.
+new_migrations() {
+    comm -13 \
+        <(git -C "$ROOT" ls-tree -r --name-only "$PREDECESSOR_REF" database/migrations | LC_ALL=C sort) \
+        <(git -C "$ROOT" ls-tree -r --name-only "$CURRENT_REF" database/migrations | LC_ALL=C sort) \
+        | sed -e 's#database/migrations/##' -e 's#\.php$##'
+}
+
+# Releases from 1.0 keep manga media in protected storage and serve it through
+# /media; earlier predecessors kept it in public storage under /storage/media.
+predecessor_media_protected() {
+    git -C "$ROOT" cat-file -e "$PREDECESSOR_REF:app/Media/ProtectMediaStorage.php" 2>/dev/null
+}
+
+# The archive the predecessor exports for the v1 compatibility check. Releases
+# from 1.0 default to schema 2 and take --schema; earlier ones only wrote v1.
+predecessor_v1_export_option() {
+    if git -C "$ROOT" show "$PREDECESSOR_REF:app/Console/Commands/ExportSeriesArchive.php" 2>/dev/null \
+        | grep -Fq -- '--schema='; then
+        printf '%s\n' '--schema=1'
+    fi
+}
 PROJECT_BASE=''
 EVIDENCE_PATH=''
 FAIL_PHASE=''
@@ -344,8 +373,9 @@ export_revisions() {
     mkdir -p "$PREDECESSOR_CONTEXT" "$CURRENT_CONTEXT"
     git -C "$ROOT" archive "$PREDECESSOR_REF" | tar -x -C "$PREDECESSOR_CONTEXT"
     git -C "$ROOT" archive "$CURRENT_REF" | tar -x -C "$CURRENT_CONTEXT"
-    "$ROOT/scripts/release/pin-exported-dockerfile.sh" "$PREDECESSOR_CONTEXT/Dockerfile"
-    "$ROOT/scripts/release/pin-exported-dockerfile.sh" "$CURRENT_CONTEXT/Dockerfile"
+    # Each revision builds with its own locked images, as it was released.
+    bash "$PREDECESSOR_CONTEXT/scripts/release/pin-exported-dockerfile.sh" "$PREDECESSOR_CONTEXT/Dockerfile"
+    bash "$CURRENT_CONTEXT/scripts/release/pin-exported-dockerfile.sh" "$CURRENT_CONTEXT/Dockerfile"
     printf '%s\n' "$PREDECESSOR_REF" > "$PREDECESSOR_CONTEXT/.koma-harness-ref"
     printf '%s\n' "$CURRENT_REF" > "$CURRENT_CONTEXT/.koma-harness-ref"
 }
@@ -583,7 +613,7 @@ install_predecessor_fixture() {
         > "$TEMP_ROOT/source-fixture-create.json"
     STEP='install-archive-v1'
     if ! app_container source archive-v1 "$SOURCE_DB_VOLUME" "$SOURCE_STORAGE_VOLUME" "$PREDECESSOR_CONTEXT" \
-        php artisan koma:archive:export pre-release-upgrade-fixture \
+        php artisan koma:archive:export pre-release-upgrade-fixture $(predecessor_v1_export_option) \
             --output=/app/storage/app/private/upgrade/predecessor-v1.koma.zip \
         > "$TEMP_ROOT/source-archive-export.txt"; then
         cat "$TEMP_ROOT/source-archive-export.txt" >&2
@@ -593,7 +623,9 @@ install_predecessor_fixture() {
     app_container source fixture-state "$SOURCE_DB_VOLUME" "$SOURCE_STORAGE_VOLUME" "$PREDECESSOR_CONTEXT" \
         env KOMA_UPGRADE_FIXTURE_ACTION=verify php /tmp/exercise-upgrade-fixture.php \
         > "$TEMP_ROOT/source-fixture.json"
-    jq -e '.format == "koma-upgrade-fixture-v1" and (.migrations | length) == 20' "$TEMP_ROOT/source-fixture.json" >/dev/null
+    jq -e --argjson count "$(migration_count "$PREDECESSOR_REF")" \
+        '.format == "koma-upgrade-fixture-v1" and (.migrations | length) == $count' \
+        "$TEMP_ROOT/source-fixture.json" >/dev/null
 }
 
 capture_pre_upgrade_backup() {
@@ -658,8 +690,8 @@ verify_pre_upgrade_backup() {
         --arg predecessor_ref "$PREDECESSOR_REF" \
         '.format == "koma-dual-revision-backup-v1" and .predecessor_ref == $predecessor_ref and .quiesced == true' \
         "$BACKUP_ROOT/metadata.json" >/dev/null
-    test "$(wc -l < "$BACKUP_ROOT/predecessor-migrations.txt" | tr -d ' ')" = 20
-    test "$(wc -l < "$BACKUP_ROOT/current-migrations.txt" | tr -d ' ')" = 22
+    test "$(wc -l < "$BACKUP_ROOT/predecessor-migrations.txt" | tr -d ' ')" = "$(migration_count "$PREDECESSOR_REF")"
+    test "$(wc -l < "$BACKUP_ROOT/current-migrations.txt" | tr -d ' ')" = "$(migration_count "$CURRENT_REF")"
 
     mkdir -p "$VERIFY_ROOT/storage" "$VERIFY_ROOT/database"
     cp "$BACKUP_ROOT/database.sqlite" "$VERIFY_ROOT/database/$DATABASE_FILE"
@@ -835,8 +867,13 @@ assert_stage_http() {
         rollback)
             port="$ROLLBACK_PORT"
             storage_volume="$ROLLBACK_STORAGE_VOLUME"
-            media_url='/storage/media/upgrade/reader.png'
-            media_path='app/public/media/upgrade/reader.png'
+            if predecessor_media_protected; then
+                media_url='/media/series/pre-release-upgrade-fixture/chapters/1/pages/1'
+                media_path='app/media/upgrade/reader.png'
+            else
+                media_url='/storage/media/upgrade/reader.png'
+                media_path='app/public/media/upgrade/reader.png'
+            fi
             ;;
         *)
             return 2
@@ -920,17 +957,16 @@ upgrade_sqlite_copy() {
         <(jq -r '.migrations[]' "$TEMP_ROOT/source-fixture.json") \
         <(jq -r '.migrations[]' "$TEMP_ROOT/upgrade-fixture.json") \
         > "$TEMP_ROOT/upgrade-migration-delta.txt"
-    diff -u <(printf '%s\n' \
-        2026_07_29_001100_add_archive_v2_metadata \
-        2026_08_01_000100_add_admin_dashboard_preferences_to_users) \
-        "$TEMP_ROOT/upgrade-migration-delta.txt"
+    diff -u <(new_migrations) "$TEMP_ROOT/upgrade-migration-delta.txt"
 
     UPGRADE_DATABASE_SHA="$(volume_file_hash "$UPGRADE_DB_VOLUME" "$DATABASE_FILE")"
     UPGRADE_STORAGE_SHA="$(volume_inventory_hash "$UPGRADE_STORAGE_VOLUME")"
     test "$UPGRADE_DATABASE_SHA" != "$SOURCE_DATABASE_SHA"
-    # The upgrade moves manga media into protected storage and changes nothing
-    # else: the same files with the same bytes, at the protected paths.
-    test "$UPGRADE_STORAGE_SHA" != "$SOURCE_STORAGE_SHA"
+    # The upgrade changes no file: the same files with the same bytes, moved to
+    # the protected paths when the predecessor kept manga media public.
+    if ! predecessor_media_protected; then
+        test "$UPGRADE_STORAGE_SHA" != "$SOURCE_STORAGE_SHA"
+    fi
     test "$UPGRADE_STORAGE_SHA" = "$(volume_inventory_hash "$SOURCE_STORAGE_VOLUME" protected)"
     printf '%s\n' "$UPGRADE_DATABASE_SHA" > "$TEMP_ROOT/upgrade-database.sha256"
     printf '%s\n' "$UPGRADE_STORAGE_SHA" > "$TEMP_ROOT/upgrade-storage.sha256"
@@ -957,6 +993,7 @@ validate_upgraded_sqlite() {
     app_container upgrade archives "$UPGRADE_DB_VOLUME" "$UPGRADE_STORAGE_VOLUME" "$CURRENT_CONTEXT" \
         env KOMA_UPGRADE_RUNTIME_ACTION=archives php /tmp/exercise-upgrade-runtime.php \
         > "$TEMP_ROOT/upgrade-archives.json"
+    jq -e '.v1.schema_version == 1 and .v2.schema_version == 2' "$TEMP_ROOT/upgrade-archives.json" >/dev/null
 
     start_stage_web upgrade
     assert_stage_http upgrade
@@ -1038,7 +1075,7 @@ validate_rolled_back_sqlite() {
     jq -e '.ready == true and ([.checks[]] | all)' "$TEMP_ROOT/rollback-doctor.json" >/dev/null
 
     app_container rollback archive-v1 "$ROLLBACK_DB_VOLUME" "$ROLLBACK_STORAGE_VOLUME" "$PREDECESSOR_CONTEXT" \
-        php artisan koma:archive:export pre-release-upgrade-fixture \
+        php artisan koma:archive:export pre-release-upgrade-fixture $(predecessor_v1_export_option) \
             --output=/app/storage/app/private/upgrade/rollback-v1.koma.zip \
         > "$TEMP_ROOT/rollback-archive-export.txt"
     test -s "$TEMP_ROOT/rollback-archive-export.txt"

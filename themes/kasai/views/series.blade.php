@@ -22,8 +22,7 @@
         </div>
     @endunless
 
-    <section class="series-hero">
-        <div class="series-hero-texture" style="background: {{ $series->coverGradient() }}"></div>
+    <section class="series-hero" style="--series-texture: {{ $series->coverGradient() }}">
         <div class="ks-wrap series-hero-inner">
             <div class="series-cover" style="background: {{ $series->coverGradient() }}">
                 @if ($series->content_rating === 'mature')

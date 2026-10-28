@@ -234,8 +234,7 @@ Open it in the terminal editor:
 nano .env
 ```
 
-Change these lines to your own values, and add the `SESSION_COOKIE` line at the
-end:
+Change these lines to your own values:
 
 ```dotenv
 APP_URL=https://manga.example.com
@@ -246,8 +245,6 @@ DB_PORT=3306
 DB_DATABASE=komaengine
 DB_USERNAME=komaengine
 DB_PASSWORD="the database password from step 2"
-
-SESSION_COOKIE=komaengine_session
 ```
 
 - `DB_CONNECTION`: `mariadb` if Plesk showed a MariaDB server in step 2,
@@ -255,8 +252,6 @@ SESSION_COOKIE=komaengine_session
 - `DB_DATABASE`, `DB_USERNAME`: the full names Plesk showed, including any
   prefix.
 - `DB_PASSWORD`: keep the double quotes around it.
-- `SESSION_COOKIE` keeps you signed in when the installer finishes (see
-  [known issues](README.md#known-issues-in-101)).
 
 Leave everything else, including the empty `APP_KEY=`, as it is. Save with
 `Ctrl+O`, `Enter`, and exit with `Ctrl+X`.
@@ -264,44 +259,50 @@ Leave everything else, including the empty `APP_KEY=`, as it is. Save with
 You can also edit `.env` in the Plesk File Manager (click the file name). If you
 do, run `chmod 600 .env` in the terminal afterwards.
 
-## 8. Generate the key and prepare storage
+## 8. Prepare the site
 
-Run these four commands in the `komaengine` folder:
+Run one command in the `komaengine` folder:
 
 ```bash
-php artisan key:generate --force
-ln -s ../storage/app/public public/storage
-php artisan koma:media:protect
-php artisan koma:doctor --mode=bootstrap
+php artisan koma:setup
 ```
 
-What they do:
-
-1. `key:generate` creates the site's secret key in `.env`. Run it only this
-   once; a new key on an existing site signs everyone out and makes encrypted
-   data unreadable.
-2. `ln -s` links `public/storage` to the folder where public uploads live.
-3. `koma:media:protect` prepares the private storage for manga pages.
-4. `koma:doctor` checks that everything is ready.
-
-The check should print:
+It creates the site's secret key in `.env` (only if there is none yet), links
+`public/storage` to the folder where public uploads live, prepares the private
+storage for manga pages, and runs the readiness checks. It is safe to run
+again at any time: it never replaces an existing key and only fixes what is
+missing. It should print something like:
 
 ```text
-app_key          OK
-media_driver     OK
-database         OK
-migrations       FAIL
-runtime_paths    OK
-cache            OK
-storage_link     OK
-legacy_public_media_absent OK
+Preparing KomaEngine in /var/www/vhosts/example.com/komaengine
+
+  .env             OK         mode 0600
+  APP_KEY          GENERATED  written to .env
+  public/storage   CREATED    public/storage -> ../storage/app/public
+  media storage    OK         protected
+
+Readiness (koma:doctor --mode=bootstrap):
+  app_key                    OK
+  media_driver               OK
+  database                   OK
+  migrations                 PENDING
+  runtime_paths              OK
+  cache                      OK
+  storage_link               OK
+  legacy_public_media_absent OK
+
+Next:
+  1. Run php artisan koma:installer-token to print the setup token.
+  2. Open https://manga.example.com/install over HTTPS and enter the token.
 ```
 
-`migrations FAIL` is expected here: the installer creates the database tables
-in the next step. If any other line says `FAIL`:
+`migrations PENDING` is expected here: the installer creates the database
+tables in the next step. If a step says `FAILED` or a check says `FAIL`, the
+line tells you what to do; fix it and run `php artisan koma:setup` again.
 
 - `database FAIL`: check the database values in `.env` (step 7).
-- `app_key FAIL`: run `php artisan key:generate --force` again.
+- `public/storage FAILED` because the host does not let PHP create links: run
+  the `ln -s` command the message shows, in the `komaengine` folder.
 - Anything else: see [Troubleshooting](troubleshooting.md).
 
 ## 9. Run the web installer
@@ -340,11 +341,10 @@ php artisan koma:doctor --mode=operational
 
 Every line, including `migrations` and `installed`, should now be `OK`.
 
-## 10. Set up the two scheduled tasks
+## 10. Set up the scheduled task
 
-KomaEngine needs two tasks that run every minute: the **scheduler**, which
-publishes scheduled chapters, and the **queue worker**, which processes archive
-imports.
+KomaEngine needs one task that runs every minute. It publishes scheduled
+chapters and starts the queue worker that processes archive imports.
 
 First find the full path of the `komaengine` folder. In the terminal, in that
 folder, run:
@@ -356,41 +356,32 @@ pwd
 It prints something like `/var/www/vhosts/example.com/komaengine`. Use that
 path below.
 
-In Plesk, open your domain and choose **Scheduled Tasks**, then **Add Task**.
-Create two tasks, each with:
+In Plesk, open your domain and choose **Scheduled Tasks**, then **Add Task**:
 
 - **Task type**: **Run a command**.
+- **Command** (one line; replace the path and PHP version):
+
+  ```text
+  cd /var/www/vhosts/example.com/komaengine && /opt/plesk/php/8.3/bin/php artisan schedule:run >/dev/null 2>&1
+  ```
+
 - **Run**: **Cron style**, with the value `* * * * *` (every minute).
 - **Notify**: **Do not notify** (or **Errors only**, if you want an email when
-  one fails).
+  it fails). Never **Every time**: the task runs every minute, so that would
+  send an email every minute.
 
-**Task 1, the scheduler.** Command (one line; replace the path and PHP version):
-
-```text
-cd /var/www/vhosts/example.com/komaengine && /opt/plesk/php/8.3/bin/php artisan schedule:run >/dev/null 2>&1
-```
-
-**Task 2, the queue worker.** Command (one line):
-
-```text
-cd /var/www/vhosts/example.com/komaengine && /opt/plesk/php/8.3/bin/php -d memory_limit=512M artisan queue:work database --queue=archive-imports,default --tries=1 --timeout=3600 --sleep=3 --stop-when-empty >/dev/null 2>&1
-```
-
-Choose **OK** for each. To test a task straight away, select it and choose
+Choose **OK**. To test the task straight away, select it and choose
 **Run Now**; it should finish without an error.
 
-Use **Do not notify** or **Errors only**, never **Every time**: the scheduler
-runs every minute, so **Every time** would send an email every minute.
-
-Plesk runs these tasks with your subscription's shell. If **Run Now** reports
+Plesk runs the task with your subscription's shell. If **Run Now** reports
 that `/opt/plesk/php/8.3/bin/php` does not exist, the subscription is still on
 the chrooted shell; set **SSH access** to **/bin/bash** as in step 6.
 
-The worker processes whatever is waiting and then exits, so nothing keeps
-running between imports. If an import is still running when the next minute
-starts, the new worker sees nothing to do and exits at once. The
-`-d memory_limit=512M` part matters: the PHP settings from step 3 apply to the
-website, not to scheduled tasks. For the details, see
+The task can start the queue worker because the settings file from step 7
+contains `KOMA_QUEUE_VIA_SCHEDULER=true`. The worker processes whatever is
+waiting and then exits, so nothing keeps running between imports, and a new
+one does not start while an import is still running. For the details, and for
+sites set up before 1.1.0 with two tasks, see
 [Queue and scheduler](shared-hosting.md#queue-and-scheduler).
 
 ## 11. Check that everything works
@@ -399,7 +390,10 @@ website, not to scheduled tasks. For the details, see
 2. Create a small test series, upload a chapter, publish it, and open it on
    the public site. The pages should load.
 3. Schedule a test chapter a few minutes ahead and check that it publishes on
-   its own. That proves the scheduler task works.
+   its own. That proves the scheduled task works.
+4. In the admin menu, open **Health**. Every item should say **OK**; the
+   scheduler shows a run from the last minute or two once the scheduled task is
+   working.
 
 Delete the test content when you are done.
 
@@ -439,7 +433,7 @@ More messages and fixes: [Troubleshooting](troubleshooting.md).
 
 ### Plesk's Laravel Toolkit
 
-You do not need it. KomaEngine's own installer and the two scheduled tasks
+You do not need it. KomaEngine's own installer and the scheduled task
 replace it. Do not use **Create Website** → **Laravel** for KomaEngine: that
 installs a new, empty Laravel application instead.
 

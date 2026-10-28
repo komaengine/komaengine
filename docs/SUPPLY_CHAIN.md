@@ -11,10 +11,10 @@ a download and how the release is produced.
 
 You need [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
 3.0 or newer. Every release is signed by the release workflow running for its
-own tag, so for version `1.0.1`:
+own tag, so for version `1.1.0`:
 
 ```bash
-IDENTITY=https://github.com/komaengine/komaengine/.github/workflows/release.yml@refs/tags/v1.0.1
+IDENTITY=https://github.com/komaengine/komaengine/.github/workflows/release.yml@refs/tags/v1.1.0
 ISSUER=https://token.actions.githubusercontent.com
 ```
 
@@ -23,7 +23,7 @@ the release notes when you can, so that what you verify is exactly what you
 pull:
 
 ```bash
-cosign verify ghcr.io/komaengine/komaengine:1.0.1 \
+cosign verify ghcr.io/komaengine/komaengine:1.1.0 \
   --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER"
 ```
 
@@ -61,7 +61,7 @@ Each GitHub Release carries these files, kept for the life of the release:
 | `komaengine-YYYYMMDD-HHMMSS.zip` | The flat-file package for shared hosting |
 | `artifact.sigstore.json` | Signature bundle for the ZIP |
 | `SHA256SUMS`, `evidence.sigstore.json` | Checksums of the evidence files, and their signature bundle |
-| `provenance.intoto.json` | in-toto Statement v1 with SLSA Provenance v1, binding the ZIP SHA-256, image digest, source commit, version, build ID, lock hashes, and SBOM hashes |
+| `provenance.intoto.json` | in-toto Statement v1 with SLSA Provenance v1, binding the ZIP SHA-256, image digest, source repository and commit, version, build ID, lock hashes, and SBOM hashes |
 | `flatfile.spdx.json` | SPDX inventory of the ZIP, including Composer dependencies |
 | `npm.spdx.json` | SPDX inventory of the npm build dependencies |
 | `image.spdx.json`, `image-amd64.spdx.json`, `image-arm64.spdx.json` | SPDX inventories of the image, including operating-system packages |
@@ -73,6 +73,15 @@ Each GitHub Release carries these files, kept for the life of the release:
 
 The images also carry BuildKit SPDX and maximum-mode provenance attestations,
 attached to their digests in the registry.
+
+The provenance's build type is
+[`https://komaengine.com/build-types/community-release/v1`](https://komaengine.com/build-types/community-release/v1/),
+and its source is `https://github.com/komaengine/komaengine` at the release
+commit. Releases 1.0.0 and 1.0.1 used an earlier `komaengine.org` build type
+and listed an internal repository URI beside the correct public commit
+([#4](https://github.com/komaengine/komaengine/issues/4)); their commit,
+hashes, and signatures are unaffected, and the verifier checks their evidence
+by commit.
 
 ## How a release is produced
 
@@ -108,10 +117,10 @@ GitHub's OIDC token.
 
 | Purpose | Version |
 |---|---|
-| Front-end build | Node 22.23.2, Debian Bookworm slim |
-| Runtime | PHP 8.4.26 FPM, Debian Bookworm |
-| PHP compatibility tests | PHP 8.3.35, 8.4.26, and 8.5.11 CLI |
-| PHP dependency build | Composer 2.9.7 |
+| Front-end build | Node 22.23.4, Debian Bookworm slim |
+| Runtime | PHP 8.4.27 FPM, Debian Bookworm |
+| PHP compatibility tests | PHP 8.3.36, 8.4.27, and 8.5.12 CLI |
+| PHP dependency build | Composer 2.9.8 |
 | Primary database | MariaDB 11.8.9 on Ubuntu Noble |
 | Compatibility database | MySQL 8.4.11 |
 | Optional database UI | Adminer 6.1.0 standalone |
@@ -134,10 +143,14 @@ available do not fail the gate.
 
 `tests/Release/image-scan-smoke.sh` applies the same gate locally to the image
 built from an exact commit, and fails if its options drift from the workflow's.
-Run it before relying on a pin and before tagging a release: pinned images do
-not receive distribution security updates, so a pin that passed earlier starts
-failing as soon as its packages are fixed upstream. Set `KOMA_TEST_IMAGE` to
-scan an image that already exists locally.
+Run it before relying on a pin and before tagging a release. The runtime stage
+installs Debian's published updates when it is built, so a fix Debian has
+shipped reaches the next build without a new pin, and two builds of the same
+commit can contain different Debian package versions; each release's image
+SBOM records the exact ones. A finding fixed outside Debian, such as in a
+Composer package or in PHP itself, still fails the gate until the lock or pin
+is updated. Set `KOMA_TEST_IMAGE` to scan an image that already exists
+locally.
 
 The local run covers the machine's own architecture only, and neither gate
 scans the database, Adminer, or build-stage images.
@@ -188,20 +201,23 @@ To generate and verify evidence yourself for an exact committed tree:
 ```bash
 scripts/release/generate-supply-chain.sh \
   --source-ref FULL_COMMIT \
+  --source-uri https://github.com/komaengine/komaengine \
   --artifact /path/to/komaengine.zip \
   --image komaengine:exact-test \
   --output /safe/output/evidence
 
 scripts/release/verify-supply-chain.sh \
   --source-ref FULL_COMMIT \
+  --source-uri https://github.com/komaengine/komaengine \
   --artifact /path/to/komaengine.zip \
   --image komaengine:exact-test \
   --evidence /safe/output/evidence
 ```
 
 The verifier fails closed on changed artifact bytes, evidence checksums,
-source and build metadata, dependency locks, SBOM hashes, or provenance
-subjects.
+source repository, commit, and build metadata, dependency locks, SBOM hashes,
+or provenance subjects. In GitHub Actions `--source-uri` defaults to the
+repository running the workflow.
 
 ## Retention
 

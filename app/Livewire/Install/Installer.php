@@ -61,6 +61,8 @@ class Installer extends Component
 
     public bool $discourageIndexing = false;
 
+    public bool $checkForUpdates = false;
+
     public bool $databaseOk = false;
 
     public ?string $databaseMessage = null;
@@ -392,6 +394,7 @@ class Installer extends Component
             'default_direction' => $this->defaultDirection,
             'mature_gate' => $this->matureGate,
             'discourage_indexing' => $this->discourageIndexing,
+            'check_for_updates' => $this->checkForUpdates,
         ];
     }
 
@@ -500,6 +503,7 @@ class Installer extends Component
             'defaultDirection' => ['required', Rule::in(Series::DIRECTIONS)],
             'matureGate' => ['boolean'],
             'discourageIndexing' => ['boolean'],
+            'checkForUpdates' => ['boolean'],
         ];
     }
 

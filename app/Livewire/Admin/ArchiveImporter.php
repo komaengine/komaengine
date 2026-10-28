@@ -3,7 +3,9 @@
 namespace App\Livewire\Admin;
 
 use App\Archives\ArchiveImportBatchOptions;
+use App\Archives\ArchivePublishingMode;
 use App\Archives\ArchiveUploadLimits;
+use App\Engine\Settings\Settings;
 use App\Jobs\ImportSeriesArchive;
 use App\Models\Series;
 use App\Models\SeriesArchiveImport;
@@ -122,6 +124,7 @@ class ArchiveImporter extends Component
         return view('livewire.admin.archive-importer', [
             'activeImport' => $activeImport,
             'seriesList' => Series::query()->orderBy('title')->get(['id', 'title', 'slug']),
+            'publishingDefaults' => ArchivePublishingMode::siteDefaults(app(Settings::class)),
             'recentImports' => SeriesArchiveImport::query()
                 ->where('user_id', auth()->id())
                 ->with('resultSeries')

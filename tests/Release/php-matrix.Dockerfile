@@ -1,4 +1,4 @@
-ARG PHP_IMAGE=php:8.4.26-cli-bookworm@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+ARG PHP_IMAGE=php:8.4.27-cli-bookworm@sha256:9c558ebd34ddb282c292ebe905da14fbab8b692e3cf8497e1eab8e812fe079cf
 FROM ${PHP_IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

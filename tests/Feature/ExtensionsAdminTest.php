@@ -7,6 +7,7 @@ use App\Livewire\Admin\Extensions;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\View;
 use Livewire\Livewire;
 
@@ -131,6 +132,23 @@ test('administrator can activate a theme and toggle a plugin', function () {
 
     expect(app(Settings::class)->get('active_theme'))->toBe('aozora')
         ->and(app(Settings::class)->get('enabled_plugins'))->toContain('hello-koma');
+});
+
+test('changing the enabled plugins tells running queue workers to restart', function () {
+    app(Settings::class)->set('enabled_plugins', []);
+    $plugins = new PluginManager(app(Settings::class));
+    $signal = fn () => Cache::pull('illuminate:queue:restart');
+
+    expect($plugins->enable('hello-koma'))->toBeTrue()
+        ->and($signal())->not->toBeNull()
+        ->and($plugins->enable('hello-koma'))->toBeTrue()
+        ->and($signal())->toBeNull();
+
+    $plugins->disable('hello-koma');
+    expect($signal())->not->toBeNull();
+
+    $plugins->disable('hello-koma');
+    expect($signal())->toBeNull();
 });
 
 test('incompatible extensions cannot be activated', function () {

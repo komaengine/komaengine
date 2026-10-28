@@ -9,7 +9,16 @@ php artisan koma:doctor --mode=operational --json
 
 Bootstrap mode checks the key, local media driver, database, migrations,
 runtime paths, cache, storage link, and absence of the legacy public manga
-directory. Operational mode also requires the terminal installer marker.
+directory. Before the web installer has run, an empty database shows
+`migrations PENDING` (JSON: `"pending": ["migrations"]`), which counts as
+ready. Operational mode also requires the terminal installer marker.
+
+Once the site is installed, administrators can open **Health** in the admin
+menu instead. It runs the same operational checks, with a fix and a link to
+this page for each one that fails, and also shows when the scheduler last ran
+and the queue worker last finished a job, waiting and failed jobs, the PHP
+limits against the recommended values, free disk space, the release, and the
+cron command for the site. Nothing on the page changes the site.
 
 ## Common hosting problems
 
@@ -30,7 +39,7 @@ Find the message or symptom you see. For the step-by-step guides, see
 | `SQLSTATE[HY000] [2002] Connection refused` or a timeout | Wrong database host or port. | Use the host and port the panel shows for the database. |
 | `ln: failed to create symbolic link 'public/storage': File exists` | The link is already there. | Fine if `php artisan koma:doctor --mode=bootstrap` shows `storage_link OK`. Otherwise see [Permissions and storage link](#permissions-and-storage-link). |
 | `Request Entity Too Large` (HTTP 413) when uploading | A web-server limit is lower than PHP's. | See [Upload failures](#upload-failures). |
-| Scheduled chapters never publish, or archive imports stay queued | The cron jobs are not running, or use the wrong path or PHP. | Check both cron jobs from [Queue and scheduler](shared-hosting.md#queue-and-scheduler). Run each command once by hand in the terminal to see its error. |
+| Scheduled chapters never publish, or archive imports stay queued | The cron job is not running, or uses the wrong path or PHP. | Check the cron job against [Queue and scheduler](shared-hosting.md#queue-and-scheduler). Run its command once by hand in the terminal to see its error. |
 
 ## Installer setup token
 
@@ -42,9 +51,10 @@ print a token and the durable marker blocks stale browser sessions.
 
 ## Application key
 
-`app_key: false` means `APP_KEY` is missing or invalid. Generate one unique key
-with `php artisan key:generate --show`, store it in the correct environment,
-and restart the PHP/container processes. Never generate a replacement for an
+`app_key: false` means `APP_KEY` is missing or invalid. On a flat-file install,
+`php artisan koma:setup` writes one into `.env` only when there is no valid key.
+Elsewhere, generate one unique key with `php artisan key:generate --show`,
+store it in the correct environment, and restart the PHP/container processes. Never generate a replacement for an
 existing site unless you accept losing sessions and encrypted values.
 
 ## Database or migrations
@@ -101,6 +111,16 @@ or falsely named images are rejected intentionally.
 
 Run a worker on `archive-imports,default`; keep its 3,600-second timeout lower
 than the 3,660-second database reservation lease. Docker includes this worker.
+
+On a control panel with one cron job, the scheduler starts the worker. Check
+that `.env` has `KOMA_QUEUE_VIA_SCHEDULER=true` and that
+`php artisan schedule:list` shows a `queue:work` entry. If the host stopped a
+worker in the middle of an import, its lock can keep new workers from starting
+for up to 70 minutes. When no import is running, remove the lock at once:
+
+```bash
+php artisan schedule:clear-cache
+```
 The admin archive screen can retry an owned failed import while its retained
 source exists, or discard a terminal source. Do not run two manual retries for
 the same import; jobs also carry an import-scoped overlap lock.

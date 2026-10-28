@@ -88,8 +88,10 @@ reject_matches() {
     fi
 }
 
+# The optional closing brace also catches a latest default inside an
+# interpolation such as ${KOMA_APP_IMAGE:-name:latest}.
 reject_matches \
-    '(^|[[:space:]])(FROM|image:)[[:space:]]+[^#[:space:]]*:latest([[:space:]]|$)' \
+    '(^|[[:space:]])(FROM|image:)[[:space:]]+[^#[:space:]]*:latest[}]?([[:space:]]|$)' \
     'A trusted build or runtime path uses a latest image tag.'
 reject_matches \
     '(^|[[:space:]])(node:22-bookworm-slim|php:8\.[345]-(fpm|cli)-bookworm|composer:2([[:space:]]|$)|mariadb:11([[:space:]]|$)|mysql:8\.4([[:space:]]|$)|adminer:latest)' \

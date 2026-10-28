@@ -10,21 +10,29 @@ IMAGE=''
 IMAGE_DIGEST=''
 OUTPUT=''
 BUILDER_ID='local:komaengine/scripts/release/generate-supply-chain.sh'
+# In GitHub Actions the repository that ran the build is the source.
+SOURCE_URI=''
+if [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+    SOURCE_URI="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+fi
 
 usage() {
     cat <<'EOF'
 Usage: scripts/release/generate-supply-chain.sh \
   --source-ref COMMIT --artifact FILE --image REF --output DIRECTORY \
-  [--image-digest sha256:...] [--builder-id ID]
+  [--source-uri URI] [--image-digest sha256:...] [--builder-id ID]
 
 Generates SPDX JSON for the final flat-file artifact and runtime image plus an
 in-toto/SLSA provenance statement. The source ref must be an exact local commit.
+The source URI is the repository that holds it; in GitHub Actions it defaults
+to $GITHUB_SERVER_URL/$GITHUB_REPOSITORY, and elsewhere it is required.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --source-ref) SOURCE_REF="${2:-}"; shift 2 ;;
+        --source-uri) SOURCE_URI="${2:-}"; shift 2 ;;
         --artifact) ARTIFACT="${2:-}"; shift 2 ;;
         --image) IMAGE="${2:-}"; shift 2 ;;
         --image-digest) IMAGE_DIGEST="${2:-}"; shift 2 ;;
@@ -49,6 +57,10 @@ done
 }
 [[ -f "$ARTIFACT" && -n "$IMAGE" && -n "$OUTPUT" && -n "$BUILDER_ID" ]] || {
     usage >&2
+    exit 2
+}
+[[ "$SOURCE_URI" =~ ^https://[^[:space:]]+[^/]$ ]] || {
+    echo 'The supply-chain source URI must be the https URL of the source repository (--source-uri).' >&2
     exit 2
 }
 
@@ -206,7 +218,7 @@ jq -n \
     --arg image_name "$IMAGE" \
     --arg image_sha "${IMAGE_DIGEST#sha256:}" \
     --arg source_commit "$SOURCE_REF" \
-    --arg source_uri 'https://github.com/spydrful/KomaEngine' \
+    --arg source_uri "$SOURCE_URI" \
     --arg release_version "$RELEASE_VERSION" \
     --arg build_id "$BUILD_ID" \
     --arg builder_id "$BUILDER_ID" \
@@ -230,7 +242,7 @@ jq -n \
       predicateType: "https://slsa.dev/provenance/v1",
       predicate: {
         buildDefinition: {
-          buildType: "https://komaengine.org/build-types/community-release/v1",
+          buildType: "https://komaengine.com/build-types/community-release/v1",
           externalParameters: {
             sourceCommit: $source_commit,
             releaseVersion: $release_version,

@@ -93,24 +93,67 @@ docker build \
 docker run --rm --entrypoint sh "$APP_IMAGE" -c \
     '! command -v composer && ! command -v git && ! command -v unzip'
 
+# Run as GitHub Actions would not: the source URI must be given explicitly.
+unset GITHUB_SERVER_URL GITHUB_REPOSITORY
+SOURCE_URI='https://github.com/komaengine/komaengine'
+
+if "$ROOT/scripts/release/generate-supply-chain.sh" \
+    --source-ref "$SOURCE_COMMIT" \
+    --artifact "$ARTIFACT" \
+    --image "$APP_IMAGE" \
+    --output "$TEMP_ROOT/no-uri-evidence" > /dev/null 2> "$ERROR_LOG"; then
+    echo 'Supply-chain generation accepted a missing source URI.' >&2
+    exit 1
+fi
+grep -Fq 'source URI' "$ERROR_LOG"
+
 "$ROOT/scripts/release/generate-supply-chain.sh" \
     --source-ref "$SOURCE_COMMIT" \
+    --source-uri "$SOURCE_URI" \
     --artifact "$ARTIFACT" \
     --image "$APP_IMAGE" \
     --output "$EVIDENCE" \
     --builder-id 'local:komaengine/tests/Release/supply-chain-smoke.sh'
 
+jq -e --arg uri "$SOURCE_URI" --arg commit "$SOURCE_COMMIT" '
+    .predicate.buildDefinition.buildType == "https://komaengine.com/build-types/community-release/v1"
+    and ([.predicate.buildDefinition.resolvedDependencies[] | select(.uri == $uri and .digest.gitCommit == $commit)] | length) == 1
+' "$EVIDENCE/provenance.intoto.json" > /dev/null
+
 "$ROOT/scripts/release/verify-supply-chain.sh" \
     --source-ref "$SOURCE_COMMIT" \
+    --source-uri "$SOURCE_URI" \
     --artifact "$ARTIFACT" \
     --image "$APP_IMAGE" \
     --evidence "$EVIDENCE"
+
+if "$ROOT/scripts/release/verify-supply-chain.sh" \
+    --source-ref "$SOURCE_COMMIT" \
+    --source-uri 'https://github.com/example/komaengine-fork' \
+    --artifact "$ARTIFACT" \
+    --image "$APP_IMAGE" \
+    --evidence "$EVIDENCE" > /dev/null 2> "$ERROR_LOG"; then
+    echo 'Supply-chain verification accepted another source repository.' >&2
+    exit 1
+fi
+grep -Fq 'Provenance does not bind' "$ERROR_LOG"
+
+if "$ROOT/scripts/release/verify-supply-chain.sh" \
+    --source-ref "$SOURCE_COMMIT" \
+    --artifact "$ARTIFACT" \
+    --image "$APP_IMAGE" \
+    --evidence "$EVIDENCE" > /dev/null 2> "$ERROR_LOG"; then
+    echo 'Supply-chain verification ran without a source URI.' >&2
+    exit 1
+fi
+grep -Fq 'source repository (--source-uri)' "$ERROR_LOG"
 
 TAMPERED_ARTIFACT="$TEMP_ROOT/tampered.zip"
 cp "$ARTIFACT" "$TAMPERED_ARTIFACT"
 printf 'tampered\n' >> "$TAMPERED_ARTIFACT"
 if "$ROOT/scripts/release/verify-supply-chain.sh" \
     --source-ref "$SOURCE_COMMIT" \
+    --source-uri "$SOURCE_URI" \
     --artifact "$TAMPERED_ARTIFACT" \
     --image "$APP_IMAGE" \
     --evidence "$EVIDENCE" > /dev/null 2> "$ERROR_LOG"; then
@@ -121,26 +164,47 @@ grep -Fq 'Provenance does not bind' "$ERROR_LOG"
 
 TAMPERED_EVIDENCE="$TEMP_ROOT/tampered-evidence"
 cp -R "$EVIDENCE" "$TAMPERED_EVIDENCE"
-jq '.predicate.buildDefinition.externalParameters.sourceCommit =
-    "0000000000000000000000000000000000000000"' \
-    "$TAMPERED_EVIDENCE/provenance.intoto.json" \
-    > "$TAMPERED_EVIDENCE/provenance.tmp"
-mv "$TAMPERED_EVIDENCE/provenance.tmp" "$TAMPERED_EVIDENCE/provenance.intoto.json"
-(
-    cd "$TAMPERED_EVIDENCE"
-    shasum -a 256 \
-        flatfile.spdx.json npm.spdx.json image.spdx.json provenance.intoto.json image-lock.env \
-        > SHA256SUMS
-)
-if "$ROOT/scripts/release/verify-supply-chain.sh" \
-    --source-ref "$SOURCE_COMMIT" \
-    --artifact "$ARTIFACT" \
-    --image "$APP_IMAGE" \
-    --evidence "$TAMPERED_EVIDENCE" > /dev/null 2> "$ERROR_LOG"; then
-    echo 'Supply-chain verification accepted mismatched provenance.' >&2
-    exit 1
+# Each tampered provenance keeps valid checksums, so only the provenance
+# check itself can catch it.
+reject_tampered_provenance() {
+    local name="$1"
+    local filter="$2"
+    local tampered="$TEMP_ROOT/tampered-$name"
+
+    cp -R "$EVIDENCE" "$tampered"
+    jq "$filter" "$tampered/provenance.intoto.json" > "$tampered/provenance.tmp"
+    mv "$tampered/provenance.tmp" "$tampered/provenance.intoto.json"
+    (
+        cd "$tampered"
+        shasum -a 256 \
+            flatfile.spdx.json npm.spdx.json image.spdx.json provenance.intoto.json image-lock.env \
+            > SHA256SUMS
+    )
+    if "$ROOT/scripts/release/verify-supply-chain.sh" \
+        --source-ref "$SOURCE_COMMIT" \
+        --source-uri "$SOURCE_URI" \
+        --artifact "$ARTIFACT" \
+        --image "$APP_IMAGE" \
+        --evidence "$tampered" > /dev/null 2> "$ERROR_LOG"; then
+        echo "Supply-chain verification accepted tampered provenance: $name." >&2
+        exit 1
+    fi
+    grep -Fq "$3" "$ERROR_LOG"
+}
+
+reject_tampered_provenance commit \
+    '.predicate.buildDefinition.externalParameters.sourceCommit = "0000000000000000000000000000000000000000"' \
+    'Provenance does not bind'
+reject_tampered_provenance uri \
+    '(.predicate.buildDefinition.resolvedDependencies[] | select(.digest.gitCommit != null) | .uri) = "https://github.com/example/komaengine-fork"' \
+    'Provenance does not bind'
+# The old build type is only accepted for 1.0.x evidence, which this is not
+# once VERSION moves past 1.0; before that it is checked by commit alone.
+if [[ ! "$RELEASE_VERSION" =~ ^1\.0\. ]]; then
+    reject_tampered_provenance legacy-build-type \
+        '.predicate.buildDefinition.buildType = "https://komaengine.org/build-types/community-release/v1"' \
+        'only valid for 1.0.x evidence'
 fi
-grep -Fq 'Provenance does not bind' "$ERROR_LOG"
 
 [[ "$(maintainer_volume_identity)" == "$MAINTAINER_BEFORE" ]] || {
     echo 'Authoritative maintainer volume identities changed during the supply-chain smoke.' >&2

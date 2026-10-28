@@ -9,18 +9,28 @@ ARTIFACT=''
 IMAGE=''
 IMAGE_DIGEST=''
 EVIDENCE=''
+SOURCE_URI=''
+if [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+    SOURCE_URI="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+fi
 
 usage() {
     cat <<'EOF'
 Usage: scripts/release/verify-supply-chain.sh \
   --source-ref COMMIT --artifact FILE --image REF --evidence DIRECTORY \
-  [--image-digest sha256:...]
+  [--source-uri URI] [--image-digest sha256:...]
+
+The provenance must name the source commit at the source URI (in GitHub
+Actions, $GITHUB_SERVER_URL/$GITHUB_REPOSITORY by default). 1.0.x evidence
+carries the old komaengine.org build type and predates the URI check, so it is
+verified by commit alone.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --source-ref) SOURCE_REF="${2:-}"; shift 2 ;;
+        --source-uri) SOURCE_URI="${2:-}"; shift 2 ;;
         --artifact) ARTIFACT="${2:-}"; shift 2 ;;
         --image) IMAGE="${2:-}"; shift 2 ;;
         --image-digest) IMAGE_DIGEST="${2:-}"; shift 2 ;;
@@ -162,7 +172,28 @@ jq -e '[.packages[]?.name] | index("mariadb-client") != null' \
     exit 1
 }
 
+# 1.0.x provenance named an internal repository with the right commit and the
+# komaengine.org build type (public issue #4). That build type is accepted only
+# for 1.0.x and is verified by commit; the komaengine.com build type must also
+# name the source repository.
+LEGACY_BUILD_TYPE='https://komaengine.org/build-types/community-release/v1'
+if [[ "$(jq -r '.predicate.buildDefinition.buildType' "$EVIDENCE/provenance.intoto.json")" == "$LEGACY_BUILD_TYPE" ]]; then
+    [[ "$RELEASE_VERSION" =~ ^1\.0\.[0-9]+(-.*)?$ ]] || {
+        echo 'The komaengine.org build type is only valid for 1.0.x evidence.' >&2
+        exit 1
+    }
+    LEGACY_EVIDENCE=true
+else
+    LEGACY_EVIDENCE=false
+    [[ "$SOURCE_URI" =~ ^https://[^[:space:]]+[^/]$ ]] || {
+        echo 'Verifying this evidence needs the https URL of the source repository (--source-uri).' >&2
+        exit 2
+    }
+fi
+
 jq -e \
+    --argjson legacy "$LEGACY_EVIDENCE" \
+    --arg source_uri "$SOURCE_URI" \
     --arg artifact_name "$(basename "$ARTIFACT")" \
     --arg artifact_sha "$ARTIFACT_SHA" \
     --arg image_name "$IMAGE" \
@@ -178,7 +209,7 @@ jq -e \
     --arg image_sbom_sha "$IMAGE_SBOM_SHA" '
       ._type == "https://in-toto.io/Statement/v1" and
       .predicateType == "https://slsa.dev/provenance/v1" and
-      .predicate.buildDefinition.buildType == "https://komaengine.org/build-types/community-release/v1" and
+      (.predicate.buildDefinition.buildType == "https://komaengine.com/build-types/community-release/v1" or $legacy) and
       ([.subject[] | select(.name == $artifact_name and .digest.sha256 == $artifact_sha)] | length) == 1 and
       ([.subject[] | select(.name == $image_name and .digest.sha256 == $image_sha)] | length) == 1 and
       .predicate.buildDefinition.externalParameters.sourceCommit == $source_commit and
@@ -191,7 +222,7 @@ jq -e \
       .predicate.buildDefinition.internalParameters.sbom.npm.sha256 == $npm_sbom_sha and
       .predicate.buildDefinition.internalParameters.sbom.image.sha256 == $image_sbom_sha and
       ([.predicate.buildDefinition.resolvedDependencies[] |
-          select(.digest.gitCommit == $source_commit)] | length) == 1
+          select(.digest.gitCommit == $source_commit and ($legacy or .uri == $source_uri))] | length) == 1
     ' "$EVIDENCE/provenance.intoto.json" >/dev/null || {
     echo 'Provenance does not bind the exact artifact, image, source, locks, and SBOMs.' >&2
     exit 1

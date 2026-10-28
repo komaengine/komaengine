@@ -2,6 +2,7 @@
 
 namespace App\Archives;
 
+use App\Engine\Settings\Settings;
 use App\Media\PreparedCover;
 use App\Media\SeriesCoverService;
 use App\Models\Chapter;
@@ -46,6 +47,7 @@ class SeriesArchiveImporter
         bool $replaceConfirmed = false,
         ?callable $progress = null,
         ?callable $committing = null,
+        ?string $publishingMode = ArchivePublishingMode::AUTOMATIC,
     ): ImportedArchive {
         if (! in_array($conflictPolicy, ArchiveImportPolicy::VALUES, true)) {
             throw new ArchiveConflictException('The selected archive conflict policy is invalid.');
@@ -64,7 +66,16 @@ class SeriesArchiveImporter
         $reachedCommit = false;
 
         try {
-            $manifest = $validated->manifest;
+            // A gallery adapter's manifest has no publishing intent of its own
+            // (the inspector keeps its source metadata), so it takes the site's
+            // defaults unless the operator chose otherwise.
+            $manifest = ArchivePublishingMode::apply(
+                $validated->manifest,
+                $publishingMode,
+                $validated->sourceMetadata !== null,
+                app(Settings::class),
+                now(),
+            );
             $counts = $this->counts($manifest);
             $this->progress($progress, 50, 'Importing', 'The archive is valid. Transferring verified media.');
 

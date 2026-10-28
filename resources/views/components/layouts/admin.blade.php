@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@500;600&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <x-site-icon />
     @livewireStyles
 </head>
 <body class="h-full overflow-x-hidden bg-paper text-[#1c1a18]">
@@ -32,6 +33,7 @@
         'admin.plugins' => 'Plugins',
         'admin.plugins.hooks' => 'Plugins',
         'admin.settings' => 'Settings',
+        'admin.health' => 'System Health',
     ];
     $title = $titles[request()->route()?->getName()] ?? 'Dashboard';
     $primary = [
@@ -77,6 +79,8 @@
                  'label' => $label, 'match' => 'admin.settings', 'can' => 'manage_settings',
              ])->values()->all(),
          'icon' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'],
+        ['route' => 'admin.health', 'label' => 'Health', 'match' => 'admin.health', 'can' => 'manage_settings',
+         'icon' => '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'],
     ];
     $navigation = [...$primary, ...$manage, ...$system];
     $pendingCommentCount = $user?->can('moderate_comments')
@@ -91,6 +95,7 @@
             newMenuOpen: false,
             accountMenuOpen: false,
             isDesktop: window.matchMedia('(min-width: 1024px)').matches,
+            canHover: window.matchMedia('(hover: hover) and (pointer: fine)').matches,
         }"
         @resize.window="isDesktop = window.matchMedia('(min-width: 1024px)').matches; if (isDesktop) navOpen = false"
         @keydown.escape.window="
@@ -119,9 +124,19 @@
                 <span class="hidden font-display text-[13px] font-bold text-white md:inline">Koma Engine</span>
             </a>
 
+            @php($siteLogo = \App\Support\Koma::logo())
             <a href="{{ url('/') }}" target="_blank" rel="noopener" title="Visit site" aria-label="Visit site" class="flex h-full min-w-0 items-center gap-1.5 px-2.5 hover:bg-[#2c3338] hover:text-white sm:px-3">
-                <svg class="shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
-                <span class="hidden max-w-48 truncate sm:block">{{ \App\Support\Koma::siteTitle() }}</span>
+                @if ($siteLogo)
+                    {{-- A light backing keeps a dark logo visible on the dark bar. --}}
+                    <span class="flex h-6 shrink-0 items-center rounded bg-white px-1" data-testid="admin-site-logo">
+                        <img src="{{ $siteLogo['url'] }}" alt="" width="{{ $siteLogo['width'] }}" height="{{ $siteLogo['height'] }}" class="h-auto max-h-5 w-auto max-w-[88px] object-contain">
+                    </span>
+                @else
+                    <svg class="shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+                @endif
+                @if (! $siteLogo || $siteLogo['show_title'])
+                    <span class="hidden max-w-48 truncate sm:block">{{ \App\Support\Koma::siteTitle() }}</span>
+                @endif
             </a>
 
             @can('moderate_comments')
@@ -215,6 +230,7 @@
             {{-- Sidebar --}}
             <nav id="admin-navigation"
                  x-ref="sidebar"
+                 @scroll="$dispatch('koma-nav-close')"
                  inert
                  aria-hidden="true"
                  :inert="! isDesktop && ! navOpen"

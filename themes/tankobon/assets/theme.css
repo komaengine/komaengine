@@ -76,6 +76,12 @@ main.wrap { flex: 1 0 auto; padding-top: 30px; padding-bottom: 60px; }
     font-family: var(--serif); font-size: 18px; font-weight: 700; flex: none;
 }
 .brand.small .glyph { width: 26px; height: 26px; font-size: 14px; border-radius: 7px; }
+/* Site logo from Settings → Branding: never stretched, capped by height. */
+.brand-logo { display: block; flex: 0 0 auto; width: auto; height: auto; max-width: 200px; max-height: 38px; object-fit: contain; }
+.brand-logo.small { max-width: 140px; max-height: 26px; }
+/* With a logo the header title may shorten to an ellipsis on narrow screens. */
+.site-header .brand:has(> .brand-logo) { min-width: 0; }
+.brand .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav { display: flex; gap: 4px; margin-left: 8px; }
 .nav a { padding: 8px 12px; border-radius: 8px; font-weight: 600; font-size: 14px; color: var(--muted); }
 .nav a:hover { background: var(--line-2); color: var(--ink); }
@@ -92,7 +98,8 @@ main.wrap { flex: 1 0 auto; padding-top: 30px; padding-bottom: 60px; }
 /* Mature notice */
 .mature-notice { background: color-mix(in oklab, var(--accent) 12%, var(--paper)); border-bottom: 1px solid var(--line); }
 .mature-notice-inner { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; font-size: 13px; flex-wrap: wrap; }
-.mature-notice-inner a { color: var(--accent); font-weight: 700; }
+/* Darkened so the link keeps 4.5:1 contrast on the accent-tinted notice. */
+.mature-notice-inner a { color: color-mix(in oklab, var(--accent) 78%, black); font-weight: 700; }
 
 /* ---- Single-series landing ---- */
 .volume { }
@@ -306,6 +313,7 @@ body.reader { background: #14110e; color: #efe7d9; display: block; }
     .vol-cover { max-width: 220px; }
     .vol-stats { gap: 22px; flex-wrap: wrap; }
     .header-actions .btn { padding: 0 10px; }
+    .site-header .brand-logo { max-width: 110px; max-height: 30px; }
     .comments-shell { padding: 16px; }
     .chapter-row a { grid-template-columns: 44px 1fr; }
     .chapter-row .cmeta { grid-column: 2; }

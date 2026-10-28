@@ -134,6 +134,46 @@ class ImageProcessor
         }
     }
 
+    /**
+     * Scale a site logo to fit within the given box, keeping transparency.
+     */
+    public function processLogo(UploadedFile $file, int $maxWidth, int $maxHeight): ProcessedImage
+    {
+        [$image, $sourceMime] = $this->decode($file);
+
+        try {
+            $image = $this->orient($image, $file, $sourceMime);
+            $image = $this->resizeWithin($image, $maxWidth, $maxHeight);
+
+            return $this->encode($image, $sourceMime);
+        } finally {
+            unset($image);
+        }
+    }
+
+    /**
+     * Crop a site icon to a centred square and scale it down to $size. Icons
+     * are always PNG, which every browser accepts as a favicon.
+     */
+    public function processIcon(UploadedFile $file, int $size): ProcessedImage
+    {
+        [$image, $sourceMime] = $this->decode($file);
+
+        try {
+            $image = $this->orient($image, $file, $sourceMime);
+            $crop = $this->cropRectangle(imagesx($image), imagesy($image), 1.0, 0.5, 0.5, 1.0);
+            $icon = $this->renderCrop($image, $crop, $size, $size);
+
+            try {
+                return $this->encode($icon, 'image/png', ['png', 'image/png']);
+            } finally {
+                unset($icon);
+            }
+        } finally {
+            unset($image);
+        }
+    }
+
     /** @return array{GdImage, string, string} */
     protected function decode(UploadedFile $file): array
     {
@@ -363,9 +403,10 @@ class ImageProcessor
         return $canvas;
     }
 
-    protected function encode(GdImage $image, string $sourceMime): ProcessedImage
+    /** @param array{string, string}|null $format [extension, mime] to force instead of the default */
+    protected function encode(GdImage $image, string $sourceMime, ?array $format = null): ProcessedImage
     {
-        [$extension, $mime] = $this->outputFormat($sourceMime);
+        [$extension, $mime] = $format ?? $this->outputFormat($sourceMime);
         $bytes = $this->captureEncoding(function () use ($image, $extension): bool {
             return match ($extension) {
                 'webp' => imagewebp(

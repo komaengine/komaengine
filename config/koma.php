@@ -23,6 +23,9 @@ return [
         'metadata_path' => base_path('KOMA-BUILD-METADATA.txt'),
     ],
 
+    // Where the admin's help links point. The same guides ship in docs/.
+    'docs_url' => 'https://github.com/komaengine/komaengine/blob/main/docs',
+
     'paths' => [
         'plugins' => base_path('plugins'),
         'themes' => base_path('themes'),
@@ -52,6 +55,12 @@ return [
             'height' => 1400,
             'thumbnail_width' => 300,
             'thumbnail_height' => 420,
+        ],
+        // Site logo and icon set under Settings → Branding.
+        'branding' => [
+            'logo_max_width' => 512,
+            'logo_max_height' => 256,
+            'icon_size' => 512,
         ],
         'quality' => [
             'webp' => 82,
@@ -84,6 +93,21 @@ return [
             'reading_direction' => 'rtl',
             'content_rating' => 'mature',
         ],
+    ],
+
+    'updates' => [
+        // Fetched once a day, only after an administrator turns update checks
+        // on. The request carries no query string, cookies, or site details.
+        'feed_url' => 'https://komaengine.com/releases/latest.json',
+        // KOMA_UPDATE_CHECK=false keeps checks off whatever the admin chooses.
+        'allowed' => (bool) env('KOMA_UPDATE_CHECK', true),
+    ],
+
+    'queue' => [
+        // When true, `schedule:run` also starts a queue worker every minute,
+        // so a hosting panel needs one cron job. Keep it false wherever a
+        // separate worker runs (Docker Compose, the Ubuntu systemd services).
+        'via_scheduler' => (bool) env('KOMA_QUEUE_VIA_SCHEDULER', false),
     ],
 
     'reading' => [

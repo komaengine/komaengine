@@ -233,9 +233,40 @@
                     <h2 class="font-display text-base font-extrabold">Chapters <span class="font-semibold text-faint">{{ $chapters->count() }}</span></h2>
                     <a href="{{ route('admin.upload', ['series' => $series->id]) }}" class="rounded-[9px] bg-koma px-3.5 py-2 text-[13px] font-bold text-white hover:bg-koma-hover">＋ Upload chapter</a>
                 </div>
+                @if ($chapterNotice)
+                    <p role="{{ $chapterNoticeIsError ? 'alert' : 'status' }}" data-testid="chapter-notice"
+                       @class([
+                           'mb-2 rounded-[10px] px-3 py-2 text-[12.5px] font-semibold',
+                           'bg-koma-soft text-[#6d3329]' => $chapterNoticeIsError,
+                           'bg-[oklch(0.7_0.13_150_/_0.12)] text-[oklch(0.38_0.1_150)]' => ! $chapterNoticeIsError,
+                       ])>{{ $chapterNotice }}</p>
+                @endif
+                @if ($chapters->isNotEmpty())
+                    @php
+                        $selectedCount = count($selectedChapters);
+                        $selectedLabel = $selectedCount === 1 ? '1 chapter' : "{$selectedCount} chapters";
+                    @endphp
+                    <div class="mb-2 flex flex-wrap items-center gap-2 rounded-[10px] bg-paper px-3 py-2" data-testid="chapter-bulk-actions">
+                        <label class="flex items-center gap-2 text-[12px] font-semibold text-muted">
+                            <input type="checkbox"
+                                   x-bind:checked="$wire.selectedChapters.length > 0 && $wire.selectedChapters.length === {{ $chapters->count() }}"
+                                   x-on:change="$wire.set('selectedChapters', $event.target.checked ? @js($chapters->pluck('id')->all()) : [])"
+                                   aria-label="Select all chapters"
+                                   class="rounded text-koma">
+                            {{ $selectedCount > 0 ? $selectedLabel.' selected' : 'Select all' }}
+                        </label>
+                        <div class="ml-auto flex flex-wrap gap-1.5">
+                            <button type="button" wire:click="applyChapterBulk('publish')" @disabled($selectedCount === 0) class="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] font-semibold hover:border-koma hover:text-koma disabled:cursor-not-allowed disabled:opacity-50">Publish</button>
+                            <button type="button" wire:click="applyChapterBulk('unpublish')" @disabled($selectedCount === 0) class="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] font-semibold hover:border-koma hover:text-koma disabled:cursor-not-allowed disabled:opacity-50">Unpublish</button>
+                            <button type="button" wire:click="applyChapterBulk('delete')" wire:confirm="Delete {{ $selectedLabel }} and all their pages? This cannot be undone." @disabled($selectedCount === 0) class="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] font-semibold text-[#9a382d] hover:bg-koma-soft disabled:cursor-not-allowed disabled:opacity-50">Delete</button>
+                        </div>
+                        @error('selectedChapters') <p class="w-full text-[11.5px] font-semibold text-koma">{{ $message }}</p> @enderror
+                    </div>
+                @endif
                 <div class="flex flex-col gap-1">
                     @forelse ($chapters as $chapter)
                         <div class="flex flex-wrap items-center gap-3 rounded-[10px] border border-line-soft px-3 py-2.5" wire:key="ch-{{ $chapter->id }}">
+                            <input type="checkbox" wire:model.live="selectedChapters" value="{{ $chapter->id }}" aria-label="Select chapter {{ $chapter->displayNumber() }}" class="rounded text-koma">
                             <span class="w-11 font-display text-sm font-extrabold text-koma">{{ $chapter->displayNumber() }}</span>
                             <span class="flex-1 truncate text-[13.5px] font-semibold">{{ $chapter->title ?: 'Chapter '.$chapter->displayNumber() }}</span>
                             <input wire:model="chapterLanguages.{{ $chapter->id }}" placeholder="lang" aria-label="Chapter {{ $chapter->displayNumber() }} language" class="h-8 w-16 rounded-md border border-line px-2 font-mono text-[11.5px] outline-none focus:border-koma">

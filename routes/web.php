@@ -1,7 +1,9 @@
 <?php
 
+use App\Branding\SiteBranding;
 use App\Http\Controllers\Admin\SeriesArchiveController;
 use App\Http\Controllers\Admin\SeriesArchiveImportController;
+use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReportController;
@@ -22,6 +24,7 @@ use App\Livewire\Admin\Moderation;
 use App\Livewire\Admin\Series\Edit as SeriesEdit;
 use App\Livewire\Admin\Series\Index as SeriesIndex;
 use App\Livewire\Admin\Settings as AdminSettings;
+use App\Livewire\Admin\SystemHealth;
 use App\Livewire\Admin\Tags;
 use App\Livewire\Admin\Updates;
 use App\Livewire\Admin\Uploader;
@@ -42,6 +45,11 @@ Route::get('/install', Installer::class)->name('install');
 Route::get('theme-assets/{path}', [ThemeAssetController::class, 'show'])
     ->where('path', '.*')
     ->name('theme.asset');
+
+// Site logo and icon from Settings → Branding.
+Route::get('branding/{file}', BrandingController::class)
+    ->where('file', SiteBranding::FILE_PATTERN)
+    ->name('branding');
 
 Route::get('/robots.txt', function (App\Engine\Settings\Settings $settings) {
     $body = (bool) $settings->get('discourage_search_engines', false)
@@ -187,4 +195,5 @@ Route::middleware(['auth', 'can:access-admin'])->prefix('admin')->group(function
         ->middleware('can:manage_plugins')
         ->name('admin.extensions.hooks');
     Route::get('/settings/{tab?}', AdminSettings::class)->middleware('can:manage_settings')->name('admin.settings');
+    Route::get('/health', SystemHealth::class)->middleware('can:manage_settings')->name('admin.health');
 });

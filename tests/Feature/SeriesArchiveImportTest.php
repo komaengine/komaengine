@@ -5,6 +5,7 @@ use App\Archives\ArchiveException;
 use App\Archives\ArchiveImportBatchOptions;
 use App\Archives\ArchiveImportPolicy;
 use App\Archives\ArchiveMediaStore;
+use App\Archives\ArchivePublishingMode;
 use App\Archives\ArchiveUploadLimits;
 use App\Archives\ArchiveValidationException;
 use App\Archives\Contracts\GalleryArchiveAdapter;
@@ -12,6 +13,7 @@ use App\Archives\GalleryArchiveV1Adapter;
 use App\Archives\KomaArchiveV1;
 use App\Archives\SeriesArchiveExporter;
 use App\Archives\SeriesArchiveImporter;
+use App\Engine\Settings\Settings;
 use App\Jobs\ImportSeriesArchive;
 use App\Livewire\Admin\ArchiveImporter;
 use App\Media\ImageProcessor;
@@ -1682,4 +1684,150 @@ test('native koma archives ignore gallery adapters entirely', function () {
 
     expect(P7PluginGalleryAdapter::$used)->toBeFalse()
         ->and($series->title)->not->toBe('Claimed By Plugin');
+});
+
+// --- Publishing mode (1.1.0): imports and the site's publishing defaults ---
+
+function p3PublicDefaults(): void
+{
+    app(Settings::class)->setMany([
+        'default_series_visibility' => 'public',
+        'default_chapter_status' => Chapter::STATUS_PUBLISHED,
+    ]);
+}
+
+test('automatic mode gives a gallery archive the site publishing defaults', function () {
+    p3PublicDefaults();
+    $fixture = p7ExternalGalleryFixture($this->archiveDirectory);
+
+    $series = app(SeriesArchiveImporter::class)->import($fixture['archive'])->series->fresh('chapters');
+    $chapter = $series->chapters->sole();
+
+    expect($series->is_public)->toBeTrue()
+        ->and($chapter->status)->toBe(Chapter::STATUS_PUBLISHED)
+        ->and($chapter->published_at->toIso8601String())->toBe('2026-07-20T12:34:56+00:00')
+        ->and(Series::query()->published()->whereKey($series->id)->exists())->toBeTrue();
+});
+
+test('automatic mode keeps a Koma archive own visibility and chapter states', function () {
+    p3PublicDefaults();
+    $fixture = p7ArchiveFixture($this->archiveDirectory);
+    $fixture['series']->delete();
+
+    $series = app(SeriesArchiveImporter::class)->import($fixture['archive'])->series->fresh('chapters');
+
+    expect($series->is_public)->toBeFalse()
+        ->and($series->chapters->sortBy('number')->pluck('status')->values()->all())->toBe([
+            Chapter::STATUS_PUBLISHED,
+            Chapter::STATUS_SCHEDULED,
+            Chapter::STATUS_DRAFT,
+        ]);
+});
+
+test('site defaults mode overrides a Koma archive', function () {
+    p3PublicDefaults();
+    $fixture = p7ArchiveFixture($this->archiveDirectory);
+    $fixture['series']->delete();
+
+    $series = app(SeriesArchiveImporter::class)->import(
+        $fixture['archive'],
+        publishingMode: ArchivePublishingMode::SITE_DEFAULTS,
+    )->series->fresh('chapters');
+
+    expect($series->is_public)->toBeTrue()
+        ->and($series->chapters->pluck('status')->unique()->values()->all())->toBe([Chapter::STATUS_PUBLISHED])
+        ->and($series->chapters->every(fn (Chapter $chapter): bool => $chapter->published_at?->toIso8601String() === '2026-07-20T12:34:56+00:00'))->toBeTrue();
+});
+
+test('private drafts mode ignores public site defaults', function () {
+    p3PublicDefaults();
+    $fixture = p7ExternalGalleryFixture($this->archiveDirectory);
+
+    $series = app(SeriesArchiveImporter::class)->import(
+        $fixture['archive'],
+        publishingMode: ArchivePublishingMode::PRIVATE_DRAFTS,
+    )->series->fresh('chapters');
+
+    expect($series->is_public)->toBeFalse()
+        ->and($series->chapters->sole()->status)->toBe(Chapter::STATUS_DRAFT)
+        ->and($series->chapters->sole()->published_at)->toBeNull();
+});
+
+test('the queued job applies the stored publishing mode, and an older record without one is automatic', function () {
+    p3PublicDefaults();
+    $admin = User::factory()->create();
+    $admin->assignRole('Administrator');
+
+    $fixture = p7ArchiveFixture($this->archiveDirectory, 'stored-mode', false, 1);
+    $record = p10QueuedImport($fixture, $admin, ArchiveImportPolicy::FAIL);
+    $record->forceFill(['publishing_mode' => ArchivePublishingMode::SITE_DEFAULTS])->save();
+    (new ImportSeriesArchive($record->id))->handle(app(SeriesArchiveImporter::class));
+
+    // A second import of the same archive, as a record from before the
+    // publishing mode existed.
+    $olderRecord = p10QueuedImport($fixture, $admin, ArchiveImportPolicy::CREATE_UNIQUE);
+    expect($olderRecord->fresh()->publishing_mode)->toBeNull();
+    (new ImportSeriesArchive($olderRecord->id))->handle(app(SeriesArchiveImporter::class));
+
+    expect($record->fresh()->resultSeries->is_public)->toBeTrue()
+        ->and($olderRecord->fresh()->resultSeries->is_public)->toBeFalse();
+});
+
+test('the upload form stores the publishing choice and rejects an unknown one', function () {
+    Queue::fake();
+    $admin = User::factory()->create();
+    $admin->assignRole('Administrator');
+    $fixture = p7ExternalGalleryFixture($this->archiveDirectory);
+    $upload = fn () => UploadedFile::fake()->createWithContent('gallery.zip', File::get($fixture['archive']));
+
+    $this->actingAs($admin)->post(route('admin.archives.import.store'), [
+        'archive' => $upload(),
+        'conflict_policy' => ArchiveImportPolicy::FAIL,
+        'publishing_mode' => ArchivePublishingMode::PRIVATE_DRAFTS,
+    ])->assertRedirect();
+    $this->actingAs($admin)->post(route('admin.archives.import.store'), [
+        'archive' => $upload(),
+        'conflict_policy' => ArchiveImportPolicy::FAIL,
+    ])->assertRedirect();
+    $this->actingAs($admin)->from(route('admin.archives.import'))->post(route('admin.archives.import.store'), [
+        'archive' => $upload(),
+        'conflict_policy' => ArchiveImportPolicy::FAIL,
+        'publishing_mode' => 'publish_everything',
+    ])->assertSessionHasErrors('publishing_mode');
+
+    expect(SeriesArchiveImport::query()->oldest()->pluck('publishing_mode')->all())
+        ->toBe([ArchivePublishingMode::PRIVATE_DRAFTS, ArchivePublishingMode::AUTOMATIC]);
+});
+
+test('a retry keeps the stored publishing choice', function () {
+    Queue::fake();
+    $admin = User::factory()->create();
+    $admin->assignRole('Administrator');
+    $fixture = p7ArchiveFixture($this->archiveDirectory, 'retry-mode', false, 1);
+    $record = p10QueuedImport($fixture, $admin, ArchiveImportPolicy::FAIL);
+    $record->forceFill([
+        'status' => SeriesArchiveImport::STATUS_FAILED,
+        'publishing_mode' => ArchivePublishingMode::SITE_DEFAULTS,
+    ])->save();
+
+    Livewire::actingAs($admin)->test(ArchiveImporter::class)->call('retryImport', $record->id);
+
+    expect($record->fresh()->status)->toBe(SeriesArchiveImport::STATUS_QUEUED)
+        ->and($record->fresh()->publishing_mode)->toBe(ArchivePublishingMode::SITE_DEFAULTS);
+    Queue::assertPushed(ImportSeriesArchive::class);
+});
+
+test('the import form shows the publishing choice and the current site defaults', function () {
+    p3PublicDefaults();
+    $admin = User::factory()->create();
+    $admin->assignRole('Administrator');
+
+    $this->actingAs($admin)
+        ->get(route('admin.archives.import'))
+        ->assertOk()
+        ->assertSee('name="publishing_mode"', false)
+        ->assertSee('Use site defaults')
+        ->assertSee('Private drafts')
+        ->assertSee('Site defaults: public series, published chapters.')
+        ->assertSee(route('admin.settings', ['tab' => 'publishing']), false);
 });

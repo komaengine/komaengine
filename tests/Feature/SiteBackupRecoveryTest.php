@@ -1,5 +1,6 @@
 <?php
 
+use App\Branding\SiteBranding;
 use App\Engine\Plugins\PluginManager;
 use App\Engine\Themes\ThemeManager;
 use App\Recovery\MySqlSiteBackupDumper;
@@ -148,6 +149,18 @@ test('creates a self-verifying SQLite backup with the required durable inventory
 
     $captured = new PDO('sqlite:'.$destination.'/database/database.sqlite');
     expect($captured->query('select name from recovery_fixture')->fetchColumn())->toBe('captured');
+});
+
+test('captures the site logo and icon stored on the media disk', function () {
+    $logo = SiteBranding::DIRECTORY.'/logo-'.str_repeat('a', 32).'.webp';
+    File::ensureDirectoryExists($this->publicMedia.'/'.SiteBranding::DIRECTORY);
+    File::put($this->publicMedia.'/'.$logo, 'logo fixture');
+    $destination = $this->recoveryRoot.'/branding-backup';
+
+    $backup = recoveryCreator($this->maintenance)->create($destination, $this->secretBundle);
+
+    expect(collect($backup->manifest['files'])->pluck('path')->all())->toContain('storage/public/media/'.$logo)
+        ->and(File::get($destination.'/storage/public/media/'.$logo))->toBe('logo fixture');
 });
 
 test('captures consistent build metadata in the release inventory', function () {

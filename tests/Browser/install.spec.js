@@ -38,6 +38,8 @@ test('installs Koma through the browser', async ({ page }, testInfo) => {
     await fillLivewire(page, page.locator('input[wire\\:model\\.live="adminEmail"]'), 'qa-admin@koma.test');
     await fillLivewire(page, page.locator('input[wire\\:model\\.live="adminPassword"]'), 'QA-Release-Check-2026!');
     await fillLivewire(page, page.locator('input[wire\\:model\\.live="adminPasswordConfirmation"]'), 'QA-Release-Check-2026!');
+    // The update notice stays off unless the administrator opts in.
+    await expect(page.getByRole('checkbox', { name: /Tell me when a new version is out/ })).not.toBeChecked();
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Install Koma Engine' }).click();
 

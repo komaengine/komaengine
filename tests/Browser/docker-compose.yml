@@ -59,6 +59,9 @@ services:
     <<: *koma-qa-runtime
     command: ["worker"]
     profiles: ["runtime"]
+    # As in the production compose file: enabling or disabling a plugin asks
+    # workers to exit so a fresh one loads the new plugin list.
+    restart: unless-stopped
     depends_on:
       migrate:
         condition: service_completed_successfully

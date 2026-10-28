@@ -55,6 +55,33 @@ not a dirty working directory, and set all five values together. Merely changing
 the env-file values does not turn a working-tree Compose rebuild into a trusted
 artifact.
 
+## Run the published image
+
+Each release also publishes a signed image,
+`ghcr.io/komaengine/komaengine:<version>`. To run it instead of building this
+checkout, use the `docker-compose.yml` from the same release, set the image in
+the Docker env file, and pull instead of building:
+
+```dotenv
+KOMA_APP_IMAGE=ghcr.io/komaengine/komaengine:1.1.0
+```
+
+```bash
+docker compose --env-file ../koma.docker.env pull
+docker compose --env-file ../koma.docker.env up -d --no-build --wait
+```
+
+Use an exact version, never `latest`. Adding the digest from the release notes
+(`ghcr.io/komaengine/komaengine:1.1.0@sha256:…`) makes the reference
+unchangeable, and [the supply-chain guide](../SUPPLY_CHAIN.md) shows how to
+verify the image's signature first. The `KOMA_RELEASE_*` values only apply to
+local builds and can stay at their defaults.
+
+Do not use `--build` while `KOMA_APP_IMAGE` names a published image: Compose
+would build this checkout and tag the result with the published name, so a
+local build would look like the official release. Leave `KOMA_APP_IMAGE` unset
+to build from source, as the other commands in this guide do.
+
 ## Start and install
 
 ```bash
@@ -113,9 +140,12 @@ host process, if ever unavoidable, must be stopped as soon as the check ends.
 
 1. Read the target release notes and [recovery contract](recovery.md).
 2. Take and verify a consistent database, storage, secret, and release backup.
-3. Build the exact target source/image without changing the running volumes.
-4. Run `docker compose ... up -d --build --wait`; the one-shot migration must
-   complete before the web, worker, or scheduler starts.
+3. Build the exact target source without changing the running volumes, or set
+   `KOMA_APP_IMAGE` to the target release's published image and run
+   `docker compose ... pull`.
+4. Run `docker compose ... up -d --build --wait` (with a published image,
+   `--no-build` instead of `--build`); the one-shot migration must complete
+   before the web, worker, or scheduler starts.
 5. Run operational doctor and verify a reader image through its protected
    `/media/...` route. The migration container automatically moves and verifies
    media that early pre-release builds kept in `storage/app/public/media`

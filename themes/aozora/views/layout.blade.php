@@ -2,6 +2,7 @@
     $accent = \App\Support\Koma::themes()->active()['accent'] ?? null;
     $matureAccess = app(\App\Support\MatureContentAccess::class);
     $matureContentHidden = $matureAccess->hidesMature(request());
+    $logo = \App\Support\Koma::logo();
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -25,14 +26,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="@themeAsset('theme.css')">
     @if ($accent)<style>:root { --accent: {!! $accent !!}; }</style>@endif
+    <x-site-icon />
     @stack('head')
 </head>
 <body>
     <header class="site-header">
         <div class="wrap bar">
             <a href="{{ route('home') }}" class="brand">
-                <span class="glyph">コ</span>
-                <span class="brand-name">{{ \App\Support\Koma::siteTitle() }}</span>
+                @if ($logo)
+                    <img class="brand-logo" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">
+                    @if ($logo['show_title'])<span class="brand-name">{{ \App\Support\Koma::siteTitle() }}</span>@endif
+                @else
+                    <span class="glyph">コ</span>
+                    <span class="brand-name">{{ \App\Support\Koma::siteTitle() }}</span>
+                @endif
             </a>
             <nav class="nav">
                 <a href="{{ route('home') }}" class="{{ request()->routeIs('home') ? 'active' : '' }}">Home</a>
@@ -72,7 +79,11 @@
 
     <footer class="site-footer">
         <div class="wrap bar">
-            <a href="{{ route('home') }}" class="brand" style="font-size:15px"><span class="glyph" style="width:26px;height:26px;font-size:14px;border-radius:7px">コ</span> {{ \App\Support\Koma::siteTitle() }}</a>
+            @if ($logo)
+                <a href="{{ route('home') }}" class="brand" style="font-size:15px"><img class="brand-logo small" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">@if ($logo['show_title']) {{ \App\Support\Koma::siteTitle() }}@endif</a>
+            @else
+                <a href="{{ route('home') }}" class="brand" style="font-size:15px"><span class="glyph" style="width:26px;height:26px;font-size:14px;border-radius:7px">コ</span> {{ \App\Support\Koma::siteTitle() }}</a>
+            @endif
             <span>Powered by Koma Engine · Community Edition</span>
             <span style="margin-left:auto">Theme: {{ \App\Support\Koma::themes()->active()['name'] ?? 'Aozora' }}</span>
             @php($komaPublisher = \App\Support\Koma::publisherIdentity())

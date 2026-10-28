@@ -2,11 +2,14 @@
 
 namespace App\Providers;
 
+use App\Engine\Health\Heartbeats;
 use App\Engine\Settings\SettingsConfigBridge;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -56,5 +59,9 @@ class AppServiceProvider extends ServiceProvider
 
         // Can this user reach the admin dashboard at all?
         Gate::define('access-admin', fn (User $user) => $user->canAccessAdmin());
+
+        // Record when a queue worker last finished a job, for the health page.
+        Queue::after(fn (JobProcessed $event) => $this->app->make(Heartbeats::class)
+            ->recordProcessedJob($event->job->getQueue()));
     }
 }

@@ -95,6 +95,38 @@ views and by the Aozora templates it may inherit. Asset and preview resolvers
 canonicalize the final file and reject traversal outside the expected theme
 directory.
 
+## Site logo and icon
+
+Administrators can upload a logo and a site icon under **Settings →
+Branding**. Show the logo wherever your theme shows its own mark, and fall back
+to that mark when none is set. `Koma::logo()` returns `null` without a logo, or
+an array with `url`, `alt`, `width`, `height`, and `show_title`:
+
+```blade
+@php($logo = \App\Support\Koma::logo())
+<a href="{{ route('home') }}" class="brand">
+    @if ($logo)
+        <img class="brand-logo" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}"
+             width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">
+        @if ($logo['show_title']){{ \App\Support\Koma::siteTitle() }}@endif
+    @else
+        <span class="your-mark">K</span>
+        {{ \App\Support\Koma::siteTitle() }}
+    @endif
+</a>
+```
+
+Use `alt` as given: it holds the site title when the administrator chose
+**Logo only**, and is empty when you also print the title, so screen readers do
+not hear it twice. Size the image in CSS with a `max-height` and `max-width`
+and `width: auto; height: auto`, so it is never stretched. Logos can be up to
+512 × 256 pixels, any shape, and may have transparent backgrounds.
+
+Add `<x-site-icon />` inside `<head>`. It prints the icon links when a site
+icon is set and nothing otherwise, so browsers keep using `/favicon.ico`.
+`Koma::siteIcon()` returns the same data (`url`, `type`, `size`) if you need
+it yourself.
+
 ## Accessibility and state coverage
 
 - Use semantic headings, landmarks, links, buttons, labels, and form error/status
@@ -125,7 +157,7 @@ depends on how KomaEngine is installed:
   it, for example:
 
   ```dockerfile
-  FROM ghcr.io/komaengine/komaengine:1.0.1
+  FROM ghcr.io/komaengine/komaengine:1.1.0
   COPY paper-moon /var/www/html/themes/paper-moon
   ```
 

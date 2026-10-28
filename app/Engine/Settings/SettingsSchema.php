@@ -27,6 +27,7 @@ final class SettingsSchema
     {
         return [
             'general' => 'General',
+            'branding' => 'Branding',
             'publishing' => 'Publishing',
             'reading' => 'Reading',
             'discussion' => 'Discussion',
@@ -106,10 +107,23 @@ final class SettingsSchema
                 'rules' => ['required', 'string', 'max:60'],
             ],
 
+            // ---- Branding ----
+            // The logo and icon files are uploaded on the same tab and stored by
+            // App\Branding\SiteBranding; only the display choice is a form field.
+            'branding_logo_display' => [
+                'tab' => 'branding', 'section' => 'Logo', 'type' => 'select',
+                'label' => 'Show',
+                'help' => 'Applies once a logo is uploaded. With Logo only, screen readers still read the site title.',
+                'default' => 'logo_and_title',
+                'options' => ['logo_and_title' => 'Logo and site title', 'logo_only' => 'Logo only'],
+                'rules' => ['required', 'in:logo_and_title,logo_only'],
+            ],
+
             // ---- Publishing ----
             'default_series_visibility' => [
                 'tab' => 'publishing', 'section' => 'New series defaults', 'type' => 'select',
                 'label' => 'Default visibility', 'default' => 'private',
+                'help' => 'Also used for imported archives that do not set their own visibility, such as gallery ZIPs.',
                 'options' => ['private' => 'Private', 'public' => 'Public'],
                 'rules' => ['required', 'in:private,public'],
             ],
@@ -128,6 +142,7 @@ final class SettingsSchema
             'default_chapter_status' => [
                 'tab' => 'publishing', 'section' => 'New chapter defaults', 'type' => 'select',
                 'label' => 'Default status on upload', 'default' => 'draft',
+                'help' => 'Also used for chapters of imported archives that do not set their own status, such as gallery ZIPs.',
                 'options' => ['draft' => 'Draft', 'published' => 'Published'],
                 'rules' => ['required', 'in:draft,published'],
             ],

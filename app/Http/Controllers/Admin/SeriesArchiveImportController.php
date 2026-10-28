@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Archives\ArchiveImportBatchOptions;
 use App\Archives\ArchiveImportPolicy;
+use App\Archives\ArchivePublishingMode;
 use App\Archives\ArchiveUploadLimits;
 use App\Http\Controllers\Controller;
 use App\Jobs\ImportSeriesArchive;
@@ -38,6 +39,7 @@ class SeriesArchiveImportController extends Controller
                     ArchiveImportPolicy::FAIL,
                     ArchiveImportPolicy::CREATE_UNIQUE,
                 ])],
+                'publishing_mode' => ['nullable', Rule::in(ArchivePublishingMode::VALUES)],
             ], [
                 'archives.required' => 'Choose one or more Koma or supported gallery ZIP archives.',
                 'archives.array' => 'Choose one or more readable archive files.',
@@ -59,6 +61,7 @@ class SeriesArchiveImportController extends Controller
                     Rule::requiredIf($policy === ArchiveImportPolicy::REPLACE),
                     $policy === ArchiveImportPolicy::REPLACE ? 'accepted' : 'nullable',
                 ],
+                'publishing_mode' => ['nullable', Rule::in(ArchivePublishingMode::VALUES)],
             ], [
                 'archive.required' => 'Choose a Koma or supported gallery ZIP archive.',
                 'archive.uploaded' => $uploadMessage,
@@ -105,6 +108,7 @@ class SeriesArchiveImportController extends Controller
                     'conflict_policy' => $validated['conflict_policy'],
                     'replacement_series_id' => $batch['enabled'] ? null : ($validated['replacement_series_id'] ?? null),
                     'replace_confirmed' => $batch['enabled'] ? false : (bool) ($validated['replace_confirmed'] ?? false),
+                    'publishing_mode' => $validated['publishing_mode'] ?? ArchivePublishingMode::AUTOMATIC,
                     'progress' => 0,
                     'stage' => 'Queued',
                     'message' => 'Waiting for an archive-import worker.',

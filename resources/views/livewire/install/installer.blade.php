@@ -285,6 +285,13 @@
                         <input type="checkbox" wire:model.live="discourageIndexing" class="h-4 w-4 accent-koma">
                         Discourage search engines until the site is ready
                     </label>
+                    <label class="flex items-start gap-2 text-[13px] font-semibold text-[#57524c]">
+                        <input type="checkbox" wire:model.live="checkForUpdates" class="mt-0.5 h-4 w-4 shrink-0 accent-koma">
+                        <span>
+                            Tell me when a new version is out
+                            <span class="mt-0.5 block text-[12px] font-normal leading-4 text-faint">Fetches one public file from komaengine.com once a day and sends nothing about this site. You can change this later under Updates.</span>
+                        </span>
+                    </label>
                 </div>
 
                 @if ($installError)

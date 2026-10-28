@@ -4,9 +4,38 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/scripts/release/image-lock.env"
-APPROVED_PREDECESSOR='83eeb5911f617bf79b4e7e899a2cd69001803484'
+# The 1.0.1 maintainer freeze: the last published release.
+APPROVED_PREDECESSOR='55555d3c2f5a5367d21079da528a9c2637ae2834'
 PREDECESSOR_REF="$APPROVED_PREDECESSOR"
 CURRENT_REF=''
+
+# Count the migrations a revision ships, so expectations follow the tree.
+migration_count() {
+    git -C "$ROOT" ls-tree -r --name-only "$1" database/migrations | grep -c '\.php$'
+}
+
+# The migrations the current ref adds over the predecessor, oldest first.
+new_migrations() {
+    comm -13 \
+        <(git -C "$ROOT" ls-tree -r --name-only "$PREDECESSOR_REF" database/migrations | LC_ALL=C sort) \
+        <(git -C "$ROOT" ls-tree -r --name-only "$CURRENT_REF" database/migrations | LC_ALL=C sort) \
+        | sed -e 's#database/migrations/##' -e 's#\.php$##'
+}
+
+# Releases from 1.0 keep manga media in protected storage and serve it through
+# /media; earlier predecessors kept it in public storage under /storage/media.
+predecessor_media_protected() {
+    git -C "$ROOT" cat-file -e "$PREDECESSOR_REF:app/Media/ProtectMediaStorage.php" 2>/dev/null
+}
+
+# The archive the predecessor exports for the v1 compatibility check. Releases
+# from 1.0 default to schema 2 and take --schema; earlier ones only wrote v1.
+predecessor_v1_export_option() {
+    if git -C "$ROOT" show "$PREDECESSOR_REF:app/Console/Commands/ExportSeriesArchive.php" 2>/dev/null \
+        | grep -Fq -- '--schema='; then
+        printf '%s\n' '--schema=1'
+    fi
+}
 PROJECT_BASE=''
 EVIDENCE_PATH=''
 FAIL_PHASE=''
@@ -298,8 +327,9 @@ export_revisions() {
     mkdir -p "$PREDECESSOR_CONTEXT" "$CURRENT_CONTEXT"
     git -C "$ROOT" archive "$PREDECESSOR_REF" | tar -x -C "$PREDECESSOR_CONTEXT"
     git -C "$ROOT" archive "$CURRENT_REF" | tar -x -C "$CURRENT_CONTEXT"
-    "$ROOT/scripts/release/pin-exported-dockerfile.sh" "$PREDECESSOR_CONTEXT/Dockerfile"
-    "$ROOT/scripts/release/pin-exported-dockerfile.sh" "$CURRENT_CONTEXT/Dockerfile"
+    # Each revision builds with its own locked images, as it was released.
+    bash "$PREDECESSOR_CONTEXT/scripts/release/pin-exported-dockerfile.sh" "$PREDECESSOR_CONTEXT/Dockerfile"
+    bash "$CURRENT_CONTEXT/scripts/release/pin-exported-dockerfile.sh" "$CURRENT_CONTEXT/Dockerfile"
 }
 
 write_build_files() {
@@ -720,7 +750,7 @@ assert_http() {
     local admin_status
 
     stage_values "$stage"
-    if [[ "$stage" == upgrade ]]; then
+    if [[ "$stage" == upgrade ]] || predecessor_media_protected; then
         media_url='/media/series/pre-release-upgrade-fixture/chapters/1/pages/1'
     else
         media_url='/storage/media/upgrade/reader.png'
@@ -802,15 +832,15 @@ install_source() {
     stage_compose source exec -T app \
         gosu www-data php artisan cache:clear --no-interaction >/dev/null
     stage_compose source exec -T app gosu www-data php artisan koma:archive:export \
-        pre-release-upgrade-fixture \
+        pre-release-upgrade-fixture $(predecessor_v1_export_option) \
         --output=/var/www/html/storage/app/private/upgrade/predecessor-v1.koma.zip \
         > "$TEMP_ROOT/source-archive-export.txt"
     run_support source php /tmp/create-recovery-queue-archive.php \
         > "$TEMP_ROOT/source-queue-archive.txt"
     capture_fixture_state source "$SOURCE_STATE"
     assert_migration_state "$SOURCE_STATE" "$PREDECESSOR_REF"
-    jq -e '
-        (.migrations | length) == 20
+    jq -e --argjson count "$(migration_count "$PREDECESSOR_REF")" '
+        (.migrations | length) == $count
         and .user.password_verified == true
         and .extensions.active_theme == "aozora"
         and (.extensions.enabled_plugins | index("hello-koma")) != null
@@ -838,16 +868,27 @@ capture_source_backup() {
 }
 
 prove_interrupted_upgrade() {
+    local first
+    local second
+
+    # Apply only the first migration the current ref adds, as an upgrade cut
+    # short after one migration would.
+    first="$(new_migrations | sed -n 1p)"
+    second="$(new_migrations | sed -n 2p)"
+    [[ -n "$first" ]] || {
+        echo 'The current ref adds no migration over the predecessor, so there is no upgrade to interrupt.' >&2
+        return 1
+    }
     restore_stage interrupted
     stage_compose interrupted run --rm --no-deps -T --entrypoint sh app -lc \
-        'exec gosu www-data php artisan migrate --force --no-interaction --path=database/migrations/2026_07_29_001100_add_archive_v2_metadata.php' \
+        "exec gosu www-data php artisan migrate --force --no-interaction --path=database/migrations/$first.php" \
         > "$TEMP_ROOT/interrupted-migrate.txt"
     INTERRUPTED_MIGRATION_COUNT="$(db_query interrupted 'SELECT COUNT(*) FROM migrations')"
-    [[ "$INTERRUPTED_MIGRATION_COUNT" == 21 ]]
+    [[ "$INTERRUPTED_MIGRATION_COUNT" == "$(($(migration_count "$PREDECESSOR_REF") + 1))" ]]
     db_query interrupted 'SELECT migration FROM migrations ORDER BY id' \
         > "$TEMP_ROOT/interrupted-migrations.txt"
-    grep -Fxq '2026_07_29_001100_add_archive_v2_metadata' "$TEMP_ROOT/interrupted-migrations.txt"
-    if grep -Fxq '2026_08_01_000100_add_admin_dashboard_preferences_to_users' "$TEMP_ROOT/interrupted-migrations.txt"; then
+    grep -Fxq "$first" "$TEMP_ROOT/interrupted-migrations.txt"
+    if [[ -n "$second" ]] && grep -Fxq "$second" "$TEMP_ROOT/interrupted-migrations.txt"; then
         echo 'Interrupted upgrade unexpectedly applied the second forward migration.' >&2
         return 1
     fi
@@ -884,9 +925,11 @@ upgrade_current() {
     UPGRADE_DATABASE_SHA="$(shasum -a 256 "$TEMP_ROOT/upgrade-after-migrate.sql" | awk '{print $1}')"
     UPGRADE_STORAGE_SHA="$(storage_inventory_hash upgrade)"
     [[ "$UPGRADE_DATABASE_SHA" != "$SOURCE_DATABASE_SHA" ]]
-    # The upgrade moves manga media into protected storage and changes nothing
-    # else: the same files with the same bytes, at the protected paths.
-    [[ "$UPGRADE_STORAGE_SHA" != "$SOURCE_STORAGE_SHA" ]]
+    # The upgrade changes no file: the same files with the same bytes, moved to
+    # the protected paths when the predecessor kept manga media public.
+    if ! predecessor_media_protected; then
+        [[ "$UPGRADE_STORAGE_SHA" != "$SOURCE_STORAGE_SHA" ]]
+    fi
     [[ "$UPGRADE_STORAGE_SHA" == "$SOURCE_PROTECTED_STORAGE_SHA" ]]
     printf '%s\n' "$UPGRADE_DATABASE_SHA" > "$TEMP_ROOT/upgrade-database.sha256"
     printf '%s\n' "$UPGRADE_STORAGE_SHA" > "$TEMP_ROOT/upgrade-storage.sha256"
@@ -896,7 +939,7 @@ validate_current_upgrade() {
     start_application upgrade
     capture_fixture_state upgrade "$TEMP_ROOT/upgrade-state.json"
     assert_migration_state "$TEMP_ROOT/upgrade-state.json" "$CURRENT_REF"
-    jq -e '(.migrations | length) == 22' "$TEMP_ROOT/upgrade-state.json" >/dev/null
+    jq -e --argjson count "$(migration_count "$CURRENT_REF")" '(.migrations | length) == $count' "$TEMP_ROOT/upgrade-state.json" >/dev/null
     jq -S 'del(.migrations)' "$SOURCE_STATE" > "$TEMP_ROOT/source-durable.json"
     jq -S 'del(.migrations)' "$TEMP_ROOT/upgrade-state.json" > "$TEMP_ROOT/upgrade-durable.json"
     cmp "$TEMP_ROOT/source-durable.json" "$TEMP_ROOT/upgrade-durable.json"
@@ -909,6 +952,7 @@ validate_current_upgrade() {
         > "$TEMP_ROOT/upgrade-archive-export.txt"
     run_support upgrade env KOMA_UPGRADE_RUNTIME_ACTION=archives \
         php /tmp/exercise-upgrade-runtime.php > "$TEMP_ROOT/upgrade-archives.json"
+    jq -e '.v1.schema_version == 1 and .v2.schema_version == 2' "$TEMP_ROOT/upgrade-archives.json" >/dev/null
     assert_http upgrade "$TEMP_ROOT/upgrade-state.json"
     exercise_runtime_services upgrade upgrade
 }
@@ -942,13 +986,14 @@ validate_predecessor_rollback() {
     capture_fixture_state rollback "$TEMP_ROOT/rollback-state.json"
     cmp "$SOURCE_STATE" "$TEMP_ROOT/rollback-state.json"
     assert_migration_state "$TEMP_ROOT/rollback-state.json" "$PREDECESSOR_REF"
-    jq -e '(.migrations | length) == 20' "$TEMP_ROOT/rollback-state.json" >/dev/null
+    jq -e --argjson count "$(migration_count "$PREDECESSOR_REF")" '(.migrations | length) == $count' \
+        "$TEMP_ROOT/rollback-state.json" >/dev/null
     assert_identity rollback "$TEMP_ROOT/rollback-identity.json"
     assert_doctor rollback "$TEMP_ROOT/rollback-doctor.json"
     assert_http rollback "$TEMP_ROOT/rollback-state.json"
 
     stage_compose rollback exec -T app gosu www-data php artisan koma:archive:export \
-        pre-release-upgrade-fixture \
+        pre-release-upgrade-fixture $(predecessor_v1_export_option) \
         --output=/var/www/html/storage/app/private/upgrade/rollback-v1.koma.zip \
         > "$TEMP_ROOT/rollback-archive-export.txt"
     exercise_runtime_services rollback rollback
@@ -1077,13 +1122,14 @@ write_evidence() {
         --argjson source_migrations "$source_migrations" \
         --argjson upgrade_migrations "$upgrade_migrations" \
         --argjson rollback_migrations "$rollback_migrations" \
+        --argjson interrupted_migration_count "$INTERRUPTED_MIGRATION_COUNT" \
         --argjson archives "$(jq -c . "$TEMP_ROOT/upgrade-archives.json")" \
         --argjson upgrade_runtime "$(jq -c . "$TEMP_ROOT/upgrade-runtime-restarted.json")" \
         --argjson rollback_runtime "$(jq -c . "$TEMP_ROOT/rollback-runtime-restarted.json")" \
         --argjson cleanup_verified "$CLEANUP_VERIFIED" \
         --argjson maintainer_unchanged "$MAINTAINER_VOLUMES_UNCHANGED" \
         --argjson phases "$phase_json" \
-        '{format: $format, started_at: $started_at, finished_at: $finished_at, refs: {predecessor: $predecessor_ref, current: $current_ref}, images: {predecessor: {id: $predecessor_image_id}, current: {id: $current_image_id}, mariadb: {id: $mariadb_image_id, repo_digests: ($mariadb_repo_digests | split(",") | map(select(length > 0)))}}, topology: {project_base: $project_base, projects: ["source", "upgrade", "rollback", "interrupted", "recovery"]}, secrets: {app_key_sha256: $app_key_sha, credential_files_mode: "0600", process_args_clean: true}, source: {database_dump_sha256: $source_database_sha, storage_inventory_sha256: $source_storage_sha, state_sha256: $source_state_sha, migrations: $source_migrations}, interrupted_upgrade: {migration_count: 21, database_dump_sha256: $interrupted_database_sha, restored_to_fresh_target: true, recovery_database_dump_sha256: $recovery_database_sha, recovery_storage_inventory_sha256: $recovery_storage_sha}, upgrade: {database_dump_sha256_after_migration: $upgrade_database_sha, storage_inventory_sha256_before_runtime: $upgrade_storage_sha, migrations: $upgrade_migrations, migration_invocations: 1, archives: $archives, runtime: $upgrade_runtime, doctor: true, http: true, restart: true, damage_verified: true}, rollback: {database_dump_sha256: $rollback_database_sha, storage_inventory_sha256: $rollback_storage_sha, migrations: $rollback_migrations, runtime: $rollback_runtime, doctor: true, http: true, restart: true, exact: (($source_database_sha == $rollback_database_sha) and ($source_storage_sha == $rollback_storage_sha))}, phases: $phases, cleanup: {verified: $cleanup_verified, maintainer_volumes_unchanged: $maintainer_unchanged}}' \
+        '{format: $format, started_at: $started_at, finished_at: $finished_at, refs: {predecessor: $predecessor_ref, current: $current_ref}, images: {predecessor: {id: $predecessor_image_id}, current: {id: $current_image_id}, mariadb: {id: $mariadb_image_id, repo_digests: ($mariadb_repo_digests | split(",") | map(select(length > 0)))}}, topology: {project_base: $project_base, projects: ["source", "upgrade", "rollback", "interrupted", "recovery"]}, secrets: {app_key_sha256: $app_key_sha, credential_files_mode: "0600", process_args_clean: true}, source: {database_dump_sha256: $source_database_sha, storage_inventory_sha256: $source_storage_sha, state_sha256: $source_state_sha, migrations: $source_migrations}, interrupted_upgrade: {migration_count: $interrupted_migration_count, database_dump_sha256: $interrupted_database_sha, restored_to_fresh_target: true, recovery_database_dump_sha256: $recovery_database_sha, recovery_storage_inventory_sha256: $recovery_storage_sha}, upgrade: {database_dump_sha256_after_migration: $upgrade_database_sha, storage_inventory_sha256_before_runtime: $upgrade_storage_sha, migrations: $upgrade_migrations, migration_invocations: 1, archives: $archives, runtime: $upgrade_runtime, doctor: true, http: true, restart: true, damage_verified: true}, rollback: {database_dump_sha256: $rollback_database_sha, storage_inventory_sha256: $rollback_storage_sha, migrations: $rollback_migrations, runtime: $rollback_runtime, doctor: true, http: true, restart: true, exact: (($source_database_sha == $rollback_database_sha) and ($source_storage_sha == $rollback_storage_sha))}, phases: $phases, cleanup: {verified: $cleanup_verified, maintainer_volumes_unchanged: $maintainer_unchanged}}' \
         > "$INTERNAL_EVIDENCE"
 
     if [[ -n "$EVIDENCE_PATH" ]]; then

@@ -123,6 +123,36 @@
                     @error('conflict_policy') <p class="mt-2 text-[12.5px] font-semibold text-koma">{{ $message }}</p> @enderror
                 </fieldset>
 
+                @php
+                    $defaultVisibility = $publishingDefaults['is_public'] ? 'public' : 'private';
+                    $defaultChapters = $publishingDefaults['chapter_status'] === 'published' ? 'published' : 'draft';
+                @endphp
+                <fieldset x-data="{ mode: @js(old('publishing_mode', 'automatic')) }">
+                    <legend class="text-[11.5px] font-bold uppercase tracking-wide text-muted">Publishing</legend>
+                    <div class="mt-2 grid gap-2 sm:grid-cols-3">
+                        <label class="rounded-xl border p-3 transition" :class="mode === 'automatic' ? 'border-koma bg-koma-soft/45' : 'border-line'">
+                            <span class="flex items-center gap-2 text-[13px] font-bold"><input x-model="mode" name="publishing_mode" type="radio" value="automatic" @checked(old('publishing_mode', 'automatic') === 'automatic') class="text-koma"> Automatic</span>
+                            <span class="mt-1 block text-[11px] leading-4 text-faint">Default. Koma Archives keep their own settings; other archives use the site defaults.</span>
+                        </label>
+                        <label class="rounded-xl border p-3 transition" :class="mode === 'site_defaults' ? 'border-koma bg-koma-soft/45' : 'border-line'">
+                            <span class="flex items-center gap-2 text-[13px] font-bold"><input x-model="mode" name="publishing_mode" type="radio" value="site_defaults" @checked(old('publishing_mode') === 'site_defaults') class="text-koma"> Use site defaults</span>
+                            <span class="mt-1 block text-[11px] leading-4 text-faint">Every archive: a {{ $defaultVisibility }} series with {{ $defaultChapters }} chapters.</span>
+                        </label>
+                        <label class="rounded-xl border p-3 transition" :class="mode === 'private_drafts' ? 'border-koma bg-koma-soft/45' : 'border-line'">
+                            <span class="flex items-center gap-2 text-[13px] font-bold"><input x-model="mode" name="publishing_mode" type="radio" value="private_drafts" @checked(old('publishing_mode') === 'private_drafts') class="text-koma"> Private drafts</span>
+                            <span class="mt-1 block text-[11px] leading-4 text-faint">A private series with draft chapters, whatever the archive says.</span>
+                        </label>
+                    </div>
+                    <p class="mt-2 text-[11.5px] leading-5 text-muted" data-testid="publishing-defaults">
+                        Site defaults: {{ $defaultVisibility }} series, {{ $defaultChapters }} chapters.
+                        @can('manage_settings')
+                            <a href="{{ route('admin.settings', ['tab' => 'publishing']) }}" class="font-semibold text-koma hover:underline">Change them in Settings</a>.
+                        @endcan
+                        A public series appears in the catalog once at least one of its chapters is published.
+                    </p>
+                    @error('publishing_mode') <p class="mt-2 text-[12.5px] font-semibold text-koma">{{ $message }}</p> @enderror
+                </fieldset>
+
                 @if (! $batchOptions['enabled'])
                     <div x-cloak x-show="policy === 'replace'" class="rounded-xl border border-koma/30 bg-koma-soft/35 p-4">
                     <label for="replacement_series_id" class="text-[11.5px] font-bold uppercase tracking-wide text-[#6d3329]">Series to replace</label>

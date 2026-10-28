@@ -185,7 +185,8 @@ test('series action menu deletes relational data and exact media after confirmat
     Livewire::actingAs($this->editor)
         ->test(Index::class)
         ->call('deleteSeries', $this->alpha->id)
-        ->assertDontSee($this->alpha->title);
+        ->assertDontSee('data-testid="series-row-'.$this->alpha->id.'"', false)
+        ->assertSet('seriesNotice', '“Alpha Signal” deleted.');
 
     expect(Series::query()->find($this->alpha->id))->toBeNull()
         ->and(Chapter::query()->find($this->alphaChapter->id))->toBeNull()

@@ -4,15 +4,15 @@
 
     <form wire:submit="login" class="flex flex-col gap-4">
         <div>
-            <label class="mb-1.5 block text-[11.5px] font-bold uppercase tracking-wide text-muted">Email</label>
-            <input type="email" wire:model="email" autofocus autocomplete="username"
+            <label for="login-email" class="mb-1.5 block text-[11.5px] font-bold uppercase tracking-wide text-muted">Email</label>
+            <input id="login-email" type="email" wire:model="email" autofocus autocomplete="username"
                    class="h-11 w-full rounded-[10px] border border-line px-3 text-sm outline-none focus:border-koma">
             @error('email') <p class="mt-1.5 text-[12.5px] font-semibold text-koma">{{ $message }}</p> @enderror
         </div>
 
         <div>
-            <label class="mb-1.5 block text-[11.5px] font-bold uppercase tracking-wide text-muted">Password</label>
-            <input type="password" wire:model="password" autocomplete="current-password"
+            <label for="login-password" class="mb-1.5 block text-[11.5px] font-bold uppercase tracking-wide text-muted">Password</label>
+            <input id="login-password" type="password" wire:model="password" autocomplete="current-password"
                    class="h-11 w-full rounded-[10px] border border-line px-3 text-sm outline-none focus:border-koma">
             @error('password') <p class="mt-1.5 text-[12.5px] font-semibold text-koma">{{ $message }}</p> @enderror
         </div>

@@ -22,7 +22,7 @@ class SeriesArchiveImport extends Model
 
     protected $fillable = [
         'id', 'user_id', 'source_name', 'source_path', 'status', 'conflict_policy',
-        'replacement_series_id', 'replace_confirmed', 'result_series_id',
+        'replacement_series_id', 'replace_confirmed', 'publishing_mode', 'result_series_id',
         'progress', 'stage', 'message', 'error', 'counts', 'started_at', 'completed_at',
     ];
 

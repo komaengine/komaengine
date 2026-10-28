@@ -98,9 +98,16 @@ test('installer can test sqlite and create the first admin', function () {
         ->and($admin->hasRole('Administrator'))->toBeTrue()
         ->and(app(Settings::class)->get('site_title'))->toBe('Koma Test Library')
         ->and(app(Settings::class)->get('installed_version'))->toBe(config('koma.version'))
+        ->and(app(Settings::class)->get('update_checks'))->toBeFalse()
         ->and(app(Settings::class)->has('installed_at'))->toBeTrue();
 
     $this->get(route('install'))->assertRedirect(route('admin.dashboard'));
+});
+
+test('update checks stay off unless the installer checkbox is ticked', function () {
+    app(InstallerService::class)->install([...installerPayload(), 'check_for_updates' => true]);
+
+    expect(app(Settings::class)->get('update_checks'))->toBeTrue();
 });
 
 test('installer completion marker closes stale setup sessions before a database probe', function () {

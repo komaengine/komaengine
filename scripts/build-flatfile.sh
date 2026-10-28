@@ -131,6 +131,9 @@ echo "==> Installing production PHP dependencies in isolated staging"
     cd "$STAGE"
     $COMPOSER_BIN install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader
 )
+# The checker comes from this build script's checkout, so older source refs
+# are held to the same rule.
+"$PHP_BIN" "$ROOT/scripts/release/assert-dist-vendor.php" "$STAGE/vendor"
 
 echo "==> Building front-end assets in isolated staging"
 (

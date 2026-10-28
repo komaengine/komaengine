@@ -69,11 +69,45 @@
         @endif
     </div>
 
+    @if ($seriesNotice)
+        <p role="{{ $seriesNoticeIsError ? 'alert' : 'status' }}" data-testid="series-notice"
+           @class([
+               'mb-2.5 rounded-[10px] px-3 py-2 text-[12.5px] font-semibold',
+               'bg-koma-soft text-[#6d3329]' => $seriesNoticeIsError,
+               'bg-[oklch(0.7_0.13_150_/_0.12)] text-[oklch(0.38_0.1_150)]' => ! $seriesNoticeIsError,
+           ])>{{ $seriesNotice }}</p>
+    @endif
+
+    @if ($series->isNotEmpty())
+        @php
+            $pageIds = $series->pluck('id')->all();
+            $selectedCount = count($selectedSeries);
+            $selectedLabel = "{$selectedCount} series";
+        @endphp
+        <div class="mb-2.5 flex flex-wrap items-center gap-2 rounded-[10px] border border-line bg-white px-3 py-2" data-testid="series-bulk-actions">
+            <label class="flex items-center gap-2 text-[12px] font-semibold text-muted">
+                <input type="checkbox"
+                       x-bind:checked="$wire.selectedSeries.length > 0 && $wire.selectedSeries.length === {{ count($pageIds) }}"
+                       x-on:change="$wire.set('selectedSeries', $event.target.checked ? @js($pageIds) : [])"
+                       aria-label="Select all series on this page"
+                       class="rounded text-koma">
+                {{ $selectedCount > 0 ? $selectedLabel.' selected' : 'Select all on this page' }}
+            </label>
+            <div class="ml-auto flex flex-wrap gap-1.5">
+                <button type="button" wire:click="applySeriesBulk('public')" @disabled($selectedCount === 0) class="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] font-semibold hover:border-koma hover:text-koma disabled:cursor-not-allowed disabled:opacity-50">Make public</button>
+                <button type="button" wire:click="applySeriesBulk('private')" @disabled($selectedCount === 0) class="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] font-semibold hover:border-koma hover:text-koma disabled:cursor-not-allowed disabled:opacity-50">Make private</button>
+                <button type="button" wire:click="applySeriesBulk('delete')" wire:confirm="Permanently delete {{ $selectedLabel }}, with all their chapters, pages, comments, and media? This cannot be undone." @disabled($selectedCount === 0) class="rounded-md border border-line bg-white px-2.5 py-1 text-[12px] font-semibold text-[#9a382d] hover:bg-koma-soft disabled:cursor-not-allowed disabled:opacity-50">Delete</button>
+            </div>
+            @error('selectedSeries') <p class="w-full text-[11.5px] font-semibold text-koma">{{ $message }}</p> @enderror
+        </div>
+    @endif
+
     <div class="overflow-hidden rounded-2xl border border-line bg-white">
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[830px] table-fixed border-collapse text-left">
+            <table class="w-full min-w-[866px] table-fixed border-collapse text-left">
                 <thead class="bg-[#faf8f6] text-[10.5px] font-bold uppercase tracking-wide text-faint">
                     <tr>
+                        <th class="w-[36px] py-3 pl-3"><span class="sr-only">Select</span></th>
                         <th class="w-[195px] px-3 py-3">Series</th>
                         <th class="w-[108px] px-2 py-3">Genres</th>
                         <th class="w-[120px] px-2 py-3">Tags</th>
@@ -90,7 +124,10 @@
                         @php
                             $commentCount = $item->comments_count + $item->chapter_comments_count;
                         @endphp
-                        <tr data-testid="series-row-{{ $item->id }}" class="align-middle hover:bg-[#fcfbfa]">
+                        <tr data-testid="series-row-{{ $item->id }}" wire:key="series-row-{{ $item->id }}" class="align-middle hover:bg-[#fcfbfa]">
+                            <td class="py-3 pl-3">
+                                <input type="checkbox" wire:model.live="selectedSeries" value="{{ $item->id }}" aria-label="Select {{ $item->title }}" class="rounded text-koma">
+                            </td>
                             <td class="px-3 py-3">
                                 <a href="{{ route('admin.series.edit', $item) }}" class="flex min-w-0 items-center gap-3">
                                     <span class="flex h-[46px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] font-display text-[12px] font-extrabold text-white/50" style="background: {{ $item->coverGradient() }}">
@@ -238,7 +275,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-5 py-16 text-center text-sm text-faint">
+                            <td colspan="10" class="px-5 py-16 text-center text-sm text-faint">
                                 @if ($filtersActive)
                                     No series match these filters.
                                     <button type="button" wire:click="clearFilters" class="font-semibold text-koma hover:underline">Clear filters →</button>

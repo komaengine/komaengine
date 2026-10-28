@@ -263,8 +263,7 @@ Open it in the terminal editor:
 nano .env
 ```
 
-Change these lines to your own values, and add the `SESSION_COOKIE` line at the
-end:
+Change these lines to your own values:
 
 ```dotenv
 APP_URL=https://manga.example.com
@@ -275,16 +274,12 @@ DB_PORT=3306
 DB_DATABASE=acct_komaengine
 DB_USERNAME=acct_koma
 DB_PASSWORD="the database password from step 2"
-
-SESSION_COOKIE=komaengine_session
 ```
 
 - `DB_CONNECTION`: `mysql` works for both MySQL and MariaDB.
 - `DB_DATABASE`, `DB_USERNAME`: the **full** names, including the account
   prefix.
 - `DB_PASSWORD`: keep the double quotes around it.
-- `SESSION_COOKIE` keeps you signed in when the installer finishes (see
-  [known issues](README.md#known-issues-in-101)).
 
 Leave everything else, including the empty `APP_KEY=`, as it is. Save with
 `Ctrl+O`, `Enter`, and exit with `Ctrl+X`.
@@ -292,46 +287,52 @@ Leave everything else, including the empty `APP_KEY=`, as it is. Save with
 You can also edit `.env` in File Manager (select it and choose **Edit**). If you
 do, run `chmod 600 .env` in the terminal afterwards.
 
-## 8. Generate the key and prepare storage
+## 8. Prepare the site
 
-Run these four commands in the `komaengine` folder:
+Run one command in the `komaengine` folder:
 
 ```bash
-php artisan key:generate --force
-ln -s ../storage/app/public public/storage
-php artisan koma:media:protect
-php artisan koma:doctor --mode=bootstrap
+php artisan koma:setup
 ```
 
-What they do:
-
-1. `key:generate` creates the site's secret key in `.env`. Run it only this
-   once; a new key on an existing site signs everyone out and makes encrypted
-   data unreadable.
-2. `ln -s` links `public/storage` to the folder where public uploads live.
-3. `koma:media:protect` prepares the private storage for manga pages.
-4. `koma:doctor` checks that everything is ready.
-
-The check should print:
+It creates the site's secret key in `.env` (only if there is none yet), links
+`public/storage` to the folder where public uploads live, prepares the private
+storage for manga pages, and runs the readiness checks. It is safe to run
+again at any time: it never replaces an existing key and only fixes what is
+missing. It should print something like:
 
 ```text
-app_key          OK
-media_driver     OK
-database         OK
-migrations       FAIL
-runtime_paths    OK
-cache            OK
-storage_link     OK
-legacy_public_media_absent OK
+Preparing KomaEngine in /home/acct/komaengine
+
+  .env             OK         mode 0600
+  APP_KEY          GENERATED  written to .env
+  public/storage   CREATED    public/storage -> ../storage/app/public
+  media storage    OK         protected
+
+Readiness (koma:doctor --mode=bootstrap):
+  app_key                    OK
+  media_driver               OK
+  database                   OK
+  migrations                 PENDING
+  runtime_paths              OK
+  cache                      OK
+  storage_link               OK
+  legacy_public_media_absent OK
+
+Next:
+  1. Run php artisan koma:installer-token to print the setup token.
+  2. Open https://manga.example.com/install over HTTPS and enter the token.
 ```
 
-`migrations FAIL` is expected here: the installer creates the database tables
-in the next step. If any other line says `FAIL`:
+`migrations PENDING` is expected here: the installer creates the database
+tables in the next step. If a step says `FAILED` or a check says `FAIL`, the
+line tells you what to do; fix it and run `php artisan koma:setup` again.
 
 - `database FAIL`: check the database values in `.env` (step 7), especially
   the full names with the account prefix. Keep `DB_HOST=localhost`; cPanel
   database users are normally set up to connect through `localhost`.
-- `app_key FAIL`: run `php artisan key:generate --force` again.
+- `public/storage FAILED` because the host does not let PHP create links: run
+  the `ln -s` command the message shows, in the `komaengine` folder.
 - Anything else: see [Troubleshooting](troubleshooting.md).
 
 ## 9. Run the web installer
@@ -370,11 +371,10 @@ php artisan koma:doctor --mode=operational
 
 Every line, including `migrations` and `installed`, should now be `OK`.
 
-## 10. Set up the two cron jobs
+## 10. Set up the cron job
 
-KomaEngine needs two jobs that run every minute: the **scheduler**, which
-publishes scheduled chapters, and the **queue worker**, which processes archive
-imports.
+KomaEngine needs one cron job that runs every minute. It publishes scheduled
+chapters and starts the queue worker that processes archive imports.
 
 First find the full path of the `komaengine` folder. In the terminal, in that
 folder, run:
@@ -389,30 +389,22 @@ in a cron job can run the wrong PHP.
 
 Open **Cron Jobs** (in **Advanced**). Under **Add New Cron Job**, choose the
 once-per-minute entry in **Common Settings**, or type `*` in each of the five
-boxes (**Minute**, **Hour**, **Day**, **Month**, **Weekday**). Paste the
-command and choose **Add New Cron Job**. Add two jobs.
-
-**Job 1, the scheduler** (one line; replace the folder and PHP path):
+boxes (**Minute**, **Hour**, **Day**, **Month**, **Weekday**). Paste this
+command (one line; replace the folder and PHP path) and choose
+**Add New Cron Job**:
 
 ```text
 cd /home/acct/komaengine && /usr/local/bin/ea-php83 artisan schedule:run >/dev/null 2>&1
 ```
 
-**Job 2, the queue worker** (one line):
-
-```text
-cd /home/acct/komaengine && /usr/local/bin/ea-php83 -d memory_limit=512M artisan queue:work database --queue=archive-imports,default --tries=1 --timeout=3600 --sleep=3 --stop-when-empty >/dev/null 2>&1
-```
-
 The `>/dev/null 2>&1` at the end stops cPanel from emailing you every minute.
-To see a job's errors while testing, run its command (without that ending) in
-the terminal.
+To see the job's errors while testing, run its command (without that ending)
+in the terminal.
 
-The worker processes whatever is waiting and then exits, so nothing keeps
-running between imports. If an import is still running when the next minute
-starts, the new worker sees nothing to do and exits at once. The
-`-d memory_limit=512M` part matters: the PHP settings from step 5 apply to the
-website, not to cron jobs.
+The job can start the queue worker because the settings file from step 7
+contains `KOMA_QUEUE_VIA_SCHEDULER=true`. The worker processes whatever is
+waiting and then exits, so nothing keeps running between imports, and a new
+one does not start while an import is still running.
 
 Some hosts limit cron jobs:
 
@@ -423,7 +415,8 @@ Some hosts limit cron jobs:
   fail, ask your host whether a PHP job may run for up to an hour, or import
   smaller archives.
 
-For the details, see [Queue and scheduler](shared-hosting.md#queue-and-scheduler).
+For the details, and for sites set up before 1.1.0 with two cron jobs, see
+[Queue and scheduler](shared-hosting.md#queue-and-scheduler).
 
 ## 11. Check that everything works
 
@@ -431,7 +424,10 @@ For the details, see [Queue and scheduler](shared-hosting.md#queue-and-scheduler
 2. Create a small test series, upload a chapter, publish it, and open it on
    the public site. The pages should load.
 3. Schedule a test chapter a few minutes ahead and check that it publishes on
-   its own. That proves the scheduler job works.
+   its own. That proves the cron job works.
+4. In the admin menu, open **Health**. Every item should say **OK**; the
+   scheduler shows a run from the last minute or two once the cron job is
+   working.
 
 Delete the test content when you are done.
 
@@ -457,7 +453,7 @@ Check the four values from step 5 in **MultiPHP INI Editor** or
 separate from PHP's; ask them to allow uploads of 520 MB if large archive
 uploads still fail.
 
-### A cron job does nothing, or prints a list of commands
+### The cron job does nothing, or prints a list of commands
 
 The job is using the wrong PHP. Use the full path from step 6, such as
 `/usr/local/bin/ea-php83`, not plain `php` or `/usr/bin/php`. To see a job's

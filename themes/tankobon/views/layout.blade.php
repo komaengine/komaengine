@@ -2,6 +2,7 @@
     $accent = \App\Support\Koma::themes()->active()['accent'] ?? null;
     $matureAccess = app(\App\Support\MatureContentAccess::class);
     $matureContentHidden = $matureAccess->hidesMature(request());
+    $logo = \App\Support\Koma::logo();
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -24,14 +25,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="@themeAsset('theme.css')">
     @if ($accent)<style>:root { --accent: {!! $accent !!}; }</style>@endif
+    <x-site-icon />
     @stack('head')
 </head>
 <body>
     <header class="site-header">
         <div class="wrap bar">
             <a href="{{ route('home') }}" class="brand">
-                <span class="glyph" aria-hidden="true">巻</span>
-                {{ \App\Support\Koma::siteTitle() }}
+                @if ($logo)
+                    <img class="brand-logo" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">
+                    @if ($logo['show_title'])<span class="brand-name">{{ \App\Support\Koma::siteTitle() }}</span>@endif
+                @else
+                    <span class="glyph" aria-hidden="true">巻</span>
+                    {{ \App\Support\Koma::siteTitle() }}
+                @endif
             </a>
             <nav class="nav" aria-label="Primary">
                 <a href="{{ route('home') }}" class="{{ request()->routeIs('home') ? 'active' : '' }}">Home</a>
@@ -67,7 +74,7 @@
 
     <footer class="site-footer">
         <div class="wrap bar">
-            <a href="{{ route('home') }}" class="brand small"><span class="glyph" aria-hidden="true">巻</span> {{ \App\Support\Koma::siteTitle() }}</a>
+            <a href="{{ route('home') }}" class="brand small">@if ($logo)<img class="brand-logo small" src="{{ $logo['url'] }}" alt="{{ $logo['alt'] }}" width="{{ $logo['width'] }}" height="{{ $logo['height'] }}">@if ($logo['show_title']) {{ \App\Support\Koma::siteTitle() }}@endif @else<span class="glyph" aria-hidden="true">巻</span> {{ \App\Support\Koma::siteTitle() }}@endif</a>
             <span>Powered by Koma Engine · Community Edition</span>
             <span class="theme-name">Theme: {{ \App\Support\Koma::themes()->active()['name'] ?? 'Tankōbon' }}</span>
             @php($komaPublisher = \App\Support\Koma::publisherIdentity())

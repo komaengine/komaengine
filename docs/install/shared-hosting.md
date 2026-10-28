@@ -67,8 +67,9 @@ cron limits, long-running process policy, or symlink policy.
   `bootstrap/cache/`.
 - A control-panel terminal or SSH access for key generation, health checks,
   backups, upgrades, and rollback.
-- Either a process supervisor for the queue worker or a provider-approved cron
-  recipe that can drain `archive-imports,default` without overlapping.
+- A cron job that can run `php artisan schedule:run` every minute, which also
+  drains `archive-imports,default`, or a process supervisor for the queue
+  worker.
 - Permission to create `public/storage` as a link to `storage/app/public`.
   Manga pages and covers are stored separately under protected
   `storage/app/media` and are served only through KomaEngine authorization.
@@ -128,32 +129,33 @@ already writable by PHP and no ownership changes are needed.
    chmod 600 .env
    ```
 
-9. **Fill in `.env`.** Set `APP_URL` and the database values, and add
-   `SESSION_COOKIE=komaengine_session`. See [Settings in `.env`](#settings-in-env).
+9. **Fill in `.env`.** Set `APP_URL` and the database values. See
+   [Settings in `.env`](#settings-in-env).
    If you edit the file in a control-panel file manager, run `chmod 600 .env`
    again afterwards.
-10. **Generate the secret key**, once, before the first web request:
+10. **Prepare the site** with one command, before the first web request:
 
     ```bash
-    php artisan key:generate --force
+    php artisan koma:setup
     ```
 
-11. **Link public files, prepare protected storage, and check readiness:**
+    It sets `.env` to mode `0600` (creating it from `.env.example` if it is
+    missing), generates `APP_KEY` only when there is no valid key, creates
+    `public/storage` as a relative link to `../storage/app/public`, prepares
+    protected media storage, and runs the bootstrap readiness checks. It is
+    safe to rerun; it never replaces a valid key or edits other `.env` values,
+    and `--json` gives machine-readable output.
+11. **Read the result.** Every readiness line should be `OK` except
+    `migrations`, which shows `PENDING` until the installer has run. A step
+    that says `FAILED` explains what to do. If PHP may not create links on the
+    host, run the `ln -s ../storage/app/public public/storage` command it
+    prints. The relative link keeps working if the host shows the folder at a
+    different absolute path to PHP than to your terminal.
 
-    ```bash
-    ln -s ../storage/app/public public/storage
-    php artisan koma:media:protect
-    php artisan koma:doctor --mode=bootstrap
-    ```
-
-    Every line should be `OK` except `migrations`, which fails until the
-    installer has run
-    ([#1](https://github.com/komaengine/komaengine/issues/1)). If
-    `public/storage` already exists as the correct link, `ln` reports
-    `File exists`; that is fine. The relative link keeps working if the host
-    shows the folder at a different absolute path to PHP than to your
-    terminal. `php artisan storage:link` creates an absolute link instead and
-    also works on most hosts.
+    The individual commands still work if you prefer them:
+    `php artisan key:generate --force` (only once), the `ln -s` command
+    above, `php artisan koma:media:protect`, and
+    `php artisan koma:doctor --mode=bootstrap`.
 12. **Run the web installer.** Print the setup token, open
     `https://your-domain/install`, and enter it:
 
@@ -173,7 +175,7 @@ already writable by PHP and no ownership changes are needed.
     ```
 
     Every line, including `installed`, should be `OK`.
-14. **Start the background jobs.** Add the two cron jobs in
+14. **Start the background jobs.** Add the cron job in
     [Queue and scheduler](#queue-and-scheduler).
 15. **Test.** Sign in, publish a small test series and chapter, and read its
     pages before adding real content.
@@ -208,16 +210,18 @@ values you set or check:
 | `DB_PORT` | `3306` | The standard port; change it only if your host says so. |
 | `DB_DATABASE`, `DB_USERNAME` | from your panel | Panels often add your account name as a prefix, for example `acct_komaengine`. Use the full names the panel shows. |
 | `DB_PASSWORD` | from your panel | Put it in double quotes if it contains spaces or `#`. |
-| `SESSION_COOKIE` | `komaengine_session` | Not in the template; add it. Keeps the installer's sign-in working ([#2](https://github.com/komaengine/komaengine/issues/2)). |
+| `SESSION_COOKIE` | (not set) | Optional. The default name, `komaengine_session`, stays the same when the installer sets the site title. |
 | `SESSION_DRIVER`, `CACHE_STORE` | `file` | Already set. |
 | `QUEUE_CONNECTION` | `database` | Already set. Archive imports use the database queue. |
 | `DB_QUEUE_RETRY_AFTER` | `3660` | Already set. Must stay higher than the worker's 3,600-second timeout. |
+| `KOMA_QUEUE_VIA_SCHEDULER` | `true` | Already set. The one cron job also runs the queue worker. Set `false` only when a separate worker runs; see [Queue and scheduler](#queue-and-scheduler). |
+| `KOMA_UPDATE_CHECK` | (not set) | Optional. `false` keeps the update notice off even if an administrator turns it on under **Updates**. With it off, KomaEngine makes no outbound requests. |
 | `FILESYSTEM_DISK` | `public` | Already set. Manga pages are stored separately in protected storage. |
 | `LOG_STACK`, `LOG_DAILY_DAYS` | `daily`, `14` | Already set: one log file per day under `storage/logs`, kept for 14 days. |
 
 The installer rewrites `APP_NAME`, `APP_URL`, the database values, and a few
-storage settings when it finishes. It keeps every other line, including
-`SESSION_COOKIE`, and always leaves the file at mode `0600`.
+storage settings when it finishes. It keeps every other line and always
+leaves the file at mode `0600`.
 
 ## Ubuntu Server walkthrough
 
@@ -226,13 +230,31 @@ The Ubuntu walkthrough that used to be here is now the
 
 ## Queue and scheduler
 
-KomaEngine needs two background tasks:
+KomaEngine needs two kinds of background work:
 
 - **The scheduler** publishes scheduled chapters. Run it every minute.
 - **A queue worker** processes archive imports on the `archive-imports` and
   `default` queues.
 
-On a server with root access, run the worker under a process supervisor. The
+On a control panel, one cron job that runs every minute does both. Replace the
+folder with the full path to your `komaengine` folder and `php` with the full
+path to the PHP program your panel guide names:
+
+```cron
+* * * * * cd /full/path/to/komaengine && php artisan schedule:run >/dev/null 2>&1
+```
+
+This works because the package's `.env` sets `KOMA_QUEUE_VIA_SCHEDULER=true`.
+Every minute the scheduler publishes due chapters and, unless a worker is
+already running, starts one in the background with a 512 MB memory limit
+(the panel's PHP settings apply to the website, not to cron jobs). The worker
+processes whatever is waiting, one job at a time, and then exits, so nothing
+keeps running between imports. While it runs, a lock stops the next minutes
+from starting a second worker; the lock is released when the worker exits and
+expires after 70 minutes at most, longer than the longest import.
+
+On a server with root access, run the worker under a process supervisor
+instead and set `KOMA_QUEUE_VIA_SCHEDULER=false`. The
 [Ubuntu guide](ubuntu-vps.md#8-start-the-background-jobs) sets up both as
 systemd services with the packaged `scripts/install-ubuntu-services.sh`. The
 worker command is:
@@ -242,26 +264,31 @@ php artisan queue:work database --queue=archive-imports,default \
   --tries=1 --timeout=3600 --sleep=3
 ```
 
-On a control panel, use two cron jobs that run every minute. Replace the folder
-with the full path to your `komaengine` folder and `php` with the full path to
-the PHP program your panel guide names:
+Docker Compose runs its own worker service and sets the option to `false`.
+
+### Sites installed before 1.1.0
+
+An older `.env` has no `KOMA_QUEUE_VIA_SCHEDULER` line, which means off, and
+the site has two cron jobs: the `schedule:run` job above and a separate queue
+worker job:
 
 ```cron
-* * * * * cd /full/path/to/komaengine && php artisan schedule:run >/dev/null 2>&1
 * * * * * cd /full/path/to/komaengine && php -d memory_limit=512M artisan queue:work database --queue=archive-imports,default --tries=1 --timeout=3600 --sleep=3 --stop-when-empty >/dev/null 2>&1
 ```
 
-The second job starts a worker that processes whatever is waiting and then
-exits (`--stop-when-empty`), so nothing keeps running between imports. When a
-long import is still running a minute later, the next worker finds no
-available job and exits straight away: each job is reserved by exactly one
-worker. Two archives uploaded together can be processed side by side, each
-using up to the memory limit.
+Both keep working after an upgrade. To move to one job, add
+`KOMA_QUEUE_VIA_SCHEDULER=true` to `.env` and delete the queue worker job (the
+one with `queue:work`). The change applies from the next minute.
+
+### Host limits
 
 Some shared hosts stop cron jobs after a few minutes or limit how often they
 run. Small imports still finish, but a host that stops long jobs cannot
 reliably import maximum-size archives. Ask the provider whether a PHP job that
 runs for up to an hour is allowed, and import smaller archives if it is not.
+If the host stops a worker in the middle of an import, its lock can hold back
+new imports until it expires; see
+[Troubleshooting](troubleshooting.md#archive-jobs-stay-queued-or-fail).
 
 ## Update and rollback
 
