@@ -15,8 +15,11 @@ host's own panel), and as the explanation behind each step of those guides.
 Download the release ZIP from the
 [download page](https://komaengine.com/download/) or the
 [releases page](https://github.com/komaengine/komaengine/releases), and note
-the SHA-256 listed next to it. Check the downloaded file on your computer
-before uploading it:
+the SHA-256 listed next to it. It is the asset named
+`komaengine-YYYYMMDD-HHMMSS.zip`; GitHub's **Source code (zip)** and **Source
+code (tar.gz)** downloads are the repository's source without `vendor/` or the
+built assets, and cannot be installed. Check the downloaded file on your
+computer before uploading it:
 
 | Computer | Command |
 |---|---|

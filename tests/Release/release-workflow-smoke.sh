@@ -141,6 +141,19 @@ build_line="$(grep -n '^  build-native:$' "$WORKFLOW" | cut -d: -f1)"
 }
 CHECKS=$((CHECKS + 1))
 
+# GitHub lists "Source code" archives under every release; the notes must say
+# that only the release ZIP installs.
+awk '
+    /<<NOTES$/ { notes = 1; next }
+    notes && /^ *NOTES$/ { notes = 0 }
+    notes && /Install \\`\$zip_name\\`\. GitHub.s \*\*Source code\*\* archives .* cannot be installed\./ { found = 1 }
+    END { exit !found }
+' "$WORKFLOW" || {
+    echo 'release.yml: the release notes must name the ZIP and say the Source code archives cannot be installed.' >&2
+    exit 1
+}
+CHECKS=$((CHECKS + 1))
+
 unpinned="$(grep -E '^\s*(- )?uses:' "$WORKFLOW" | grep -Ev '@[0-9a-f]{40}( |$)' || true)"
 [[ -z "$unpinned" ]] || { echo "release.yml has actions not pinned to a commit: $unpinned" >&2; exit 1; }
 CHECKS=$((CHECKS + 1))

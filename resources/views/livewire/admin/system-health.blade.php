@@ -217,7 +217,13 @@
                 <dt class="text-muted">Version</dt><dd class="font-mono font-semibold">{{ $release['version'] }}</dd>
                 <dt class="text-muted">Commit</dt><dd class="break-all font-mono">{{ $release['commit'] }}</dd>
                 <dt class="text-muted">Build</dt><dd class="break-all font-mono">{{ $release['build_id'] }}</dd>
-                <dt class="text-muted">Official build</dt><dd>{{ $release['trusted'] ? 'Yes' : 'No' }}</dd>
+                <dt class="text-muted">Official build</dt><dd data-testid="health-official">{{ $release['official'] ? 'Yes' : 'No' }}</dd>
+                <dd class="col-start-2 text-[12.5px] leading-5 text-muted">
+                    @if ($release['reason'])
+                        <span class="block" data-testid="health-official-reason">{{ $release['reason'] }}</span>
+                    @endif
+                    This page cannot check signatures. <a href="{{ $docsUrl }}/SUPPLY_CHAIN.md#verify-a-release" target="_blank" rel="noopener noreferrer" class="font-bold text-[#8a2f25] underline">Verify a release</a> tells you how.
+                </dd>
                 <dt class="text-muted">Update checks</dt>
                 <dd data-testid="health-update">
                     @if (! $update['allowed'])

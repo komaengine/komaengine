@@ -49,8 +49,11 @@ guide it will contain:
 
 ## 1. Check the download on your computer
 
-Download the ZIP from the [download page](https://komaengine.com/download/)
-and check that its SHA-256 matches the one listed there:
+Download the release ZIP, `komaengine-YYYYMMDD-HHMMSS.zip`, from the
+[download page](https://komaengine.com/download/). GitHub's **Source code
+(zip)** and **Source code (tar.gz)** downloads are the repository's source
+without `vendor/` or the built assets, and cannot be installed. Check that the
+ZIP's SHA-256 matches the one listed on the download page:
 
 | Computer | Command |
 |---|---|

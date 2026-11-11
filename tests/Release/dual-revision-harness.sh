@@ -4,10 +4,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/scripts/release/image-lock.env"
-# The 1.0.1 maintainer freeze: the last published release.
-APPROVED_PREDECESSOR='55555d3c2f5a5367d21079da528a9c2637ae2834'
+# Maintainer freezes of published releases: 1.1.0, the last one and the
+# default, and 1.0.1, for sites that skipped 1.1.0. No other predecessor runs.
+APPROVED_PREDECESSORS=(
+    'cb11dbe7a115f790e36a2f05f49df8d2d159f9b2'
+    '55555d3c2f5a5367d21079da528a9c2637ae2834'
+)
 MODE='dry-run'
-PREDECESSOR_REF="$APPROVED_PREDECESSOR"
+PREDECESSOR_REF="${APPROVED_PREDECESSORS[0]}"
 CURRENT_REF=''
 
 # Count the migrations a revision ships, so expectations follow the tree.
@@ -63,7 +67,8 @@ Modes:
   --safety-smoke  Exercise hard guards and failure cleanup for every exposed phase.
 
 Options:
-  --predecessor-ref HASH  Full immutable predecessor commit.
+  --predecessor-ref HASH  Approved release freeze: 1.1.0 cb11dbe7a115f790e36a2f05f49df8d2d159f9b2
+                          (default) or 1.0.1 55555d3c2f5a5367d21079da528a9c2637ae2834.
   --current-ref HASH      Full immutable current commit (defaults to resolved HEAD).
   --project-base NAME     Test-only deterministic base; must match koma-upgrade-<12 hex>.
   --evidence PATH         Copy machine-readable evidence to PATH.
@@ -300,6 +305,10 @@ run_phase() {
 validate_refs_and_topology() {
     full_commit "$PREDECESSOR_REF" || {
         printf 'Predecessor ref must be an available full lowercase commit: %s\n' "$PREDECESSOR_REF" >&2
+        return 2
+    }
+    [[ " ${APPROVED_PREDECESSORS[*]} " == *" $PREDECESSOR_REF "* ]] || {
+        printf 'Predecessor ref is not an approved release freeze: %s\n' "$PREDECESSOR_REF" >&2
         return 2
     }
     full_commit "$CURRENT_REF" || {
@@ -961,7 +970,10 @@ upgrade_sqlite_copy() {
 
     UPGRADE_DATABASE_SHA="$(volume_file_hash "$UPGRADE_DB_VOLUME" "$DATABASE_FILE")"
     UPGRADE_STORAGE_SHA="$(volume_inventory_hash "$UPGRADE_STORAGE_VOLUME")"
-    test "$UPGRADE_DATABASE_SHA" != "$SOURCE_DATABASE_SHA"
+    # Without a new migration the upgrade may leave the database file as it was.
+    if [[ -n "$(new_migrations)" ]]; then
+        test "$UPGRADE_DATABASE_SHA" != "$SOURCE_DATABASE_SHA"
+    fi
     # The upgrade changes no file: the same files with the same bytes, moved to
     # the protected paths when the predecessor kept manga media public.
     if ! predecessor_media_protected; then

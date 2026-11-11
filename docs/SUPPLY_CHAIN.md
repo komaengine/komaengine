@@ -11,10 +11,10 @@ a download and how the release is produced.
 
 You need [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
 3.0 or newer. Every release is signed by the release workflow running for its
-own tag, so for version `1.1.0`:
+own tag, so for version `1.1.1`:
 
 ```bash
-IDENTITY=https://github.com/komaengine/komaengine/.github/workflows/release.yml@refs/tags/v1.1.0
+IDENTITY=https://github.com/komaengine/komaengine/.github/workflows/release.yml@refs/tags/v1.1.1
 ISSUER=https://token.actions.githubusercontent.com
 ```
 
@@ -23,7 +23,7 @@ the release notes when you can, so that what you verify is exactly what you
 pull:
 
 ```bash
-cosign verify ghcr.io/komaengine/komaengine:1.1.0 \
+cosign verify ghcr.io/komaengine/komaengine:1.1.1 \
   --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER"
 ```
 
@@ -120,7 +120,7 @@ GitHub's OIDC token.
 | Front-end build | Node 22.23.4, Debian Bookworm slim |
 | Runtime | PHP 8.4.27 FPM, Debian Bookworm |
 | PHP compatibility tests | PHP 8.3.36, 8.4.27, and 8.5.12 CLI |
-| PHP dependency build | Composer 2.9.8 |
+| PHP dependency build | Composer 2.11.2 |
 | Primary database | MariaDB 11.8.9 on Ubuntu Noble |
 | Compatibility database | MySQL 8.4.11 |
 | Optional database UI | Adminer 6.1.0 standalone |
@@ -143,6 +143,8 @@ available do not fail the gate.
 
 `tests/Release/image-scan-smoke.sh` applies the same gate locally to the image
 built from an exact commit, and fails if its options drift from the workflow's.
+It builds that image without the local build cache, as the release runners do,
+so a cached `apt-get upgrade` layer cannot hide or invent a Debian finding.
 Run it before relying on a pin and before tagging a release. The runtime stage
 installs Debian's published updates when it is built, so a fix Debian has
 shipped reaches the next build without a new pin, and two builds of the same

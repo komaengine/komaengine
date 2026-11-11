@@ -25,8 +25,8 @@ existing extracted package after a verified backup, and performs an exact-code
 rollback. This is Docker machine evidence, not real shared-host acceptance.
 
 The previous ref defaults to the parent of the current ref. To prove the
-upgrade from the last release, pass its maintainer freeze, for 1.0.1:
-  --previous-ref 55555d3c2f5a5367d21079da528a9c2637ae2834
+upgrade from the last release, pass its maintainer freeze, for 1.1.0:
+  --previous-ref cb11dbe7a115f790e36a2f05f49df8d2d159f9b2
 Each package is inspected with its own revision's inspect-artifact.sh; the
 previous package skips only the dependency audit.
 EOF

@@ -18,7 +18,11 @@ menu instead. It runs the same operational checks, with a fix and a link to
 this page for each one that fails, and also shows when the scheduler last ran
 and the queue worker last finished a job, waiting and failed jobs, the PHP
 limits against the recommended values, free disk space, the release, and the
-cron command for the site. Nothing on the page changes the site.
+cron command for the site. Nothing on the page changes the site. **Official
+build** says **Yes** only when the package's `KOMA-BUILD-METADATA.txt`
+describes a clean exact-commit build of the running version. The page cannot
+check signatures or whether files were changed afterwards, so use
+[Verify a release](../SUPPLY_CHAIN.md#verify-a-release) for that.
 
 ## Common hosting problems
 
@@ -27,6 +31,7 @@ Find the message or symptom you see. For the step-by-step guides, see
 
 | What you see | Usual cause | What to do |
 |---|---|---|
+| `KomaEngine cannot start: vendor/autoload.php is missing.`, or `Failed opening required '.../vendor/autoload.php'` | The folder came from GitHub's **Source code** download or a Git checkout. Neither includes `vendor/` or the built assets. | Download the release ZIP, `komaengine-YYYYMMDD-HHMMSS.zip`, from the [download page](https://komaengine.com/download/) and install it instead. To work on KomaEngine's own code, follow [Local development](local.md). |
 | Your old site, a host placeholder page, or a file listing instead of KomaEngine | The domain still serves `httpdocs` or `public_html`. | Set the domain's document root to `komaengine/public` in the control panel. |
 | The installer's **Web document root** check is not ready | Same as above, or the root points at `komaengine` instead of `komaengine/public`. | Point it at `komaengine/public` exactly. See [Wrong document root](#wrong-document-root). |
 | `Composer detected issues in your platform: Your Composer dependencies require a PHP version ">= 8.3.0"` | The domain, or the terminal, uses an older PHP. | Choose PHP 8.3, 8.4, or 8.5 for the domain in the panel. In the terminal, run commands with the full path to the newer PHP; your panel guide lists it. |

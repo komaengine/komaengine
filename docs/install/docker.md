@@ -63,7 +63,7 @@ checkout, use the `docker-compose.yml` from the same release, set the image in
 the Docker env file, and pull instead of building:
 
 ```dotenv
-KOMA_APP_IMAGE=ghcr.io/komaengine/komaengine:1.1.0
+KOMA_APP_IMAGE=ghcr.io/komaengine/komaengine:1.1.1
 ```
 
 ```bash
@@ -72,7 +72,7 @@ docker compose --env-file ../koma.docker.env up -d --no-build --wait
 ```
 
 Use an exact version, never `latest`. Adding the digest from the release notes
-(`ghcr.io/komaengine/komaengine:1.1.0@sha256:…`) makes the reference
+(`ghcr.io/komaengine/komaengine:1.1.1@sha256:…`) makes the reference
 unchangeable, and [the supply-chain guide](../SUPPLY_CHAIN.md) shows how to
 verify the image's signature first. The `KOMA_RELEASE_*` values only apply to
 local builds and can stay at their defaults.

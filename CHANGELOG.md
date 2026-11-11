@@ -3,6 +3,72 @@
 Notable changes to KomaEngine Community Edition. The version comes from the
 root `VERSION` file, and every build also records its exact source commit.
 
+## 1.1.1
+
+Fixes for the two issues found while verifying 1.1.0 from outside: **Health**
+now recognizes the official release ZIP and image, and the guides, the
+download page, and the release notes name the ZIP to install, while a folder
+without `vendor/` explains itself instead of failing with a PHP error. It also
+updates the Symfony components and the Composer used to build the release for
+security advisories published since 1.1.0. There is no new migration and no
+new setting.
+
+### Security
+
+- Symfony components that every page and email pass through are updated for
+  advisories published after 1.1.0, and the release check's dependency audit
+  refuses the earlier versions:
+  - `symfony/http-foundation` 7.4.21 to 7.4.23: CVE-2026-118514 (HEAD
+    requests bypass method-restricted access rules), GHSA-3h27-hjv7-fqjx
+    (path rules enforced in front of PHP can be bypassed through the script
+    name), GHSA-xg2q-4rrq-657q (the `private_ranges` trusted-proxy shortcut
+    trusts some IPv6 transition addresses), and GHSA-5mx8-mwrp-5693
+    (generated URLs can point to a host the client chose);
+  - `symfony/http-kernel` 7.3.2 to 7.4.23: GHSA-wg5q-m2ww-f3c9 (forwarded
+    headers on inline fragments); the 7.3 line receives no fix;
+  - `symfony/mime` 7.4.13 to 7.4.22: CVE-2026-45070 (email header injection
+    through characters not allowed in MIME parameter names);
+  - `symfony/routing` 7.4.13 to 7.4.23: CVE-2026-118516 (host placeholders
+    can match the start of the path in compiled URL matchers).
+
+  The development-only `symfony/yaml` moves to 7.4.23 as well. No other
+  package changes, and `composer.json` is unchanged.
+- The release ZIP and the container image install their PHP dependencies
+  with Composer 2.11.2 instead of 2.9.8, whose line no longer receives fixes.
+  Advisories published since 1.1.0, including GHSA-w6hj-6587-3jh5 and
+  GHSA-jhfp-4ppm-crmm on November 10, 2026, are fixed only in 2.11.2.
+  Composer runs only while building; neither the ZIP nor the image contains
+  it.
+
+### Fixed
+
+- **Health** reports the release from the package's own
+  `KOMA-BUILD-METADATA.txt`, so a site installed from the release ZIP shows
+  its commit, its build ID, and **Official build: Yes** instead of
+  `unavailable`, `development`, and **No**
+  ([#6](https://github.com/komaengine/komaengine/issues/6)). Only a clean
+  exact-commit build of the running version counts as official; otherwise
+  the page says why. Without the file, the `KOMA_RELEASE_*` environment
+  decides as before. The page also notes that it cannot check signatures and
+  links to "Verify a release".
+- A folder unpacked from GitHub's **Source code** download, or a Git
+  checkout, no longer stops with PHP's fatal error about
+  `vendor/autoload.php`: `php artisan` and the site's pages say that the
+  release ZIP, `komaengine-YYYYMMDD-HHMMSS.zip`, is the file to install,
+  and pages answer with status 503
+  ([#7](https://github.com/komaengine/komaengine/issues/7)). The install
+  guides, the install starting page, the README, troubleshooting, the
+  download page, and the release notes now name that ZIP and say the
+  **Source code** archives cannot be installed.
+
+### Upgrade notes
+
+- A Docker env file copied from the 1.1.0 `.env.docker.example` sets
+  `KOMA_RELEASE_VERSION=1.1.0`, and the image build stops because it no
+  longer matches `VERSION`. Set it to `1.1.1` or delete the line. A
+  `KOMA_APP_IMAGE` that names `1.1.0` keeps running 1.1.0 until it names
+  `1.1.1`.
+
 ## 1.1.0
 
 Fixes for the four issues reported against `1.0.1` and for archive imports,
@@ -209,21 +275,12 @@ It is the code accepted as `1.0.0-rc.2`, plus the changes below.
 
 ### Fixed
 
-- Imported gallery-style archives, including those read by plugin adapters,
-  now follow the site's **Default visibility** and **Default status on
-  upload** settings instead of always arriving private with draft chapters.
-
 - A database connection that failed during installation was reported as a
   failure of the installer's cleanup step instead of the real error.
 - The release source manifest required planning files that only exist in the
   maintainers' private repository.
 
 ### Added
-
-- The archive import form has a **Publishing** choice, stored with each import
-  and kept on retry: **Automatic** (Koma Archives keep their own visibility
-  and chapter states; gallery-style archives use the site defaults), **Use
-  site defaults**, or **Private drafts**.
 
 - A contributing guide, a code of conduct, issue and pull request templates,
   and a security policy for private reporting through GitHub.
@@ -303,10 +360,6 @@ evidence is limited to pre-release predecessor compatibility.
 - An operator [recovery policy](docs/OPERATIONS_RECOVERY_POLICY.md).
 
 ### Fixed
-
-- Imported gallery-style archives, including those read by plugin adapters,
-  now follow the site's **Default visibility** and **Default status on
-  upload** settings instead of always arriving private with draft chapters.
 
 - The backup command refused to run on the documented Ubuntu layout, where
   release storage is a link to shared storage.

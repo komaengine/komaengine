@@ -408,6 +408,8 @@ jobs:
           zip_sha256="$(sha256sum "$ARCHIVE" | cut -d' ' -f1)"
           printf '%s\n\n' "$changes" > "$notes"
           cat >> "$notes" <<NOTES
+          Install \`$zip_name\`. GitHub's **Source code** archives below are the repository without \`vendor/\` or the built assets, and cannot be installed.
+
           ## Verify this release
 
           - Source commit: \`$RELEASE_COMMIT\`

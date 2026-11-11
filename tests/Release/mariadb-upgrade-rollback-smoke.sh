@@ -4,10 +4,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/scripts/release/image-lock.env"
-# The 1.0.1 maintainer freeze: the last published release.
-APPROVED_PREDECESSOR='55555d3c2f5a5367d21079da528a9c2637ae2834'
-PREDECESSOR_REF="$APPROVED_PREDECESSOR"
+# Maintainer freezes of published releases: 1.1.0, the last one and the
+# default, and 1.0.1, for sites that skipped 1.1.0. No other predecessor runs.
+APPROVED_PREDECESSORS=(
+    'cb11dbe7a115f790e36a2f05f49df8d2d159f9b2'
+    '55555d3c2f5a5367d21079da528a9c2637ae2834'
+)
+PREDECESSOR_REF="${APPROVED_PREDECESSORS[0]}"
 CURRENT_REF=''
+INTERRUPTED_APPLICABLE=true
 
 # Count the migrations a revision ships, so expectations follow the tree.
 migration_count() {
@@ -54,7 +59,8 @@ usage() {
 Usage: tests/Release/mariadb-upgrade-rollback-smoke.sh [options]
 
 Options:
-  --predecessor-ref HASH  Full immutable predecessor commit.
+  --predecessor-ref HASH  Approved release freeze: 1.1.0 cb11dbe7a115f790e36a2f05f49df8d2d159f9b2
+                          (default) or 1.0.1 55555d3c2f5a5367d21079da528a9c2637ae2834.
   --current-ref HASH      Full immutable current commit (defaults to resolved HEAD).
   --project-base NAME     Test-only deterministic base; must match koma-upgrade-<12 hex>.
   --evidence PATH         Copy machine-readable evidence to PATH.
@@ -279,6 +285,10 @@ run_phase() {
 validate_inputs() {
     full_commit "$PREDECESSOR_REF" || {
         printf 'Predecessor ref must be an available full commit: %s\n' "$PREDECESSOR_REF" >&2
+        return 2
+    }
+    [[ " ${APPROVED_PREDECESSORS[*]} " == *" $PREDECESSOR_REF "* ]] || {
+        printf 'Predecessor ref is not an approved release freeze: %s\n' "$PREDECESSOR_REF" >&2
         return 2
     }
     full_commit "$CURRENT_REF" || {
@@ -875,10 +885,13 @@ prove_interrupted_upgrade() {
     # short after one migration would.
     first="$(new_migrations | sed -n 1p)"
     second="$(new_migrations | sed -n 2p)"
-    [[ -n "$first" ]] || {
-        echo 'The current ref adds no migration over the predecessor, so there is no upgrade to interrupt.' >&2
-        return 1
-    }
+    if [[ -z "$first" ]]; then
+        # No migration to cut short; the restore to a fresh target still runs.
+        echo 'The current ref adds no migration over the predecessor; the interrupted upgrade does not apply.'
+        INTERRUPTED_APPLICABLE=false
+        INTERRUPTED_MIGRATION_COUNT=null
+        return 0
+    fi
     restore_stage interrupted
     stage_compose interrupted run --rm --no-deps -T --entrypoint sh app -lc \
         "exec gosu www-data php artisan migrate --force --no-interaction --path=database/migrations/$first.php" \
@@ -924,7 +937,10 @@ upgrade_current() {
     dump_database upgrade "$TEMP_ROOT/upgrade-after-migrate.sql"
     UPGRADE_DATABASE_SHA="$(shasum -a 256 "$TEMP_ROOT/upgrade-after-migrate.sql" | awk '{print $1}')"
     UPGRADE_STORAGE_SHA="$(storage_inventory_hash upgrade)"
-    [[ "$UPGRADE_DATABASE_SHA" != "$SOURCE_DATABASE_SHA" ]]
+    # Without a new migration the upgrade has nothing to change in the database.
+    if [[ -n "$(new_migrations)" ]]; then
+        [[ "$UPGRADE_DATABASE_SHA" != "$SOURCE_DATABASE_SHA" ]]
+    fi
     # The upgrade changes no file: the same files with the same bytes, moved to
     # the protected paths when the predecessor kept manga media public.
     if ! predecessor_media_protected; then
@@ -1112,7 +1128,7 @@ write_evidence() {
         --arg source_database_sha "$(<"$TEMP_ROOT/source-database.sha256")" \
         --arg source_storage_sha "$(<"$TEMP_ROOT/source-storage.sha256")" \
         --arg source_state_sha "$(<"$TEMP_ROOT/source-state.sha256")" \
-        --arg interrupted_database_sha "$(<"$TEMP_ROOT/interrupted-database.sha256")" \
+        --arg interrupted_database_sha "$(cat "$TEMP_ROOT/interrupted-database.sha256" 2>/dev/null || true)" \
         --arg recovery_database_sha "$(<"$TEMP_ROOT/recovery-database.sha256")" \
         --arg recovery_storage_sha "$(<"$TEMP_ROOT/recovery-storage.sha256")" \
         --arg upgrade_database_sha "$(<"$TEMP_ROOT/upgrade-database.sha256")" \
@@ -1122,6 +1138,7 @@ write_evidence() {
         --argjson source_migrations "$source_migrations" \
         --argjson upgrade_migrations "$upgrade_migrations" \
         --argjson rollback_migrations "$rollback_migrations" \
+        --argjson interrupted_applicable "$INTERRUPTED_APPLICABLE" \
         --argjson interrupted_migration_count "$INTERRUPTED_MIGRATION_COUNT" \
         --argjson archives "$(jq -c . "$TEMP_ROOT/upgrade-archives.json")" \
         --argjson upgrade_runtime "$(jq -c . "$TEMP_ROOT/upgrade-runtime-restarted.json")" \
@@ -1129,7 +1146,7 @@ write_evidence() {
         --argjson cleanup_verified "$CLEANUP_VERIFIED" \
         --argjson maintainer_unchanged "$MAINTAINER_VOLUMES_UNCHANGED" \
         --argjson phases "$phase_json" \
-        '{format: $format, started_at: $started_at, finished_at: $finished_at, refs: {predecessor: $predecessor_ref, current: $current_ref}, images: {predecessor: {id: $predecessor_image_id}, current: {id: $current_image_id}, mariadb: {id: $mariadb_image_id, repo_digests: ($mariadb_repo_digests | split(",") | map(select(length > 0)))}}, topology: {project_base: $project_base, projects: ["source", "upgrade", "rollback", "interrupted", "recovery"]}, secrets: {app_key_sha256: $app_key_sha, credential_files_mode: "0600", process_args_clean: true}, source: {database_dump_sha256: $source_database_sha, storage_inventory_sha256: $source_storage_sha, state_sha256: $source_state_sha, migrations: $source_migrations}, interrupted_upgrade: {migration_count: $interrupted_migration_count, database_dump_sha256: $interrupted_database_sha, restored_to_fresh_target: true, recovery_database_dump_sha256: $recovery_database_sha, recovery_storage_inventory_sha256: $recovery_storage_sha}, upgrade: {database_dump_sha256_after_migration: $upgrade_database_sha, storage_inventory_sha256_before_runtime: $upgrade_storage_sha, migrations: $upgrade_migrations, migration_invocations: 1, archives: $archives, runtime: $upgrade_runtime, doctor: true, http: true, restart: true, damage_verified: true}, rollback: {database_dump_sha256: $rollback_database_sha, storage_inventory_sha256: $rollback_storage_sha, migrations: $rollback_migrations, runtime: $rollback_runtime, doctor: true, http: true, restart: true, exact: (($source_database_sha == $rollback_database_sha) and ($source_storage_sha == $rollback_storage_sha))}, phases: $phases, cleanup: {verified: $cleanup_verified, maintainer_volumes_unchanged: $maintainer_unchanged}}' \
+        '{format: $format, started_at: $started_at, finished_at: $finished_at, refs: {predecessor: $predecessor_ref, current: $current_ref}, images: {predecessor: {id: $predecessor_image_id}, current: {id: $current_image_id}, mariadb: {id: $mariadb_image_id, repo_digests: ($mariadb_repo_digests | split(",") | map(select(length > 0)))}}, topology: {project_base: $project_base, projects: ["source", "upgrade", "rollback", "interrupted", "recovery"]}, secrets: {app_key_sha256: $app_key_sha, credential_files_mode: "0600", process_args_clean: true}, source: {database_dump_sha256: $source_database_sha, storage_inventory_sha256: $source_storage_sha, state_sha256: $source_state_sha, migrations: $source_migrations}, interrupted_upgrade: {applicable: $interrupted_applicable, migration_count: $interrupted_migration_count, database_dump_sha256: (if $interrupted_applicable then $interrupted_database_sha else null end), restored_to_fresh_target: true, recovery_database_dump_sha256: $recovery_database_sha, recovery_storage_inventory_sha256: $recovery_storage_sha}, upgrade: {database_dump_sha256_after_migration: $upgrade_database_sha, storage_inventory_sha256_before_runtime: $upgrade_storage_sha, migrations: $upgrade_migrations, migration_invocations: 1, archives: $archives, runtime: $upgrade_runtime, doctor: true, http: true, restart: true, damage_verified: true}, rollback: {database_dump_sha256: $rollback_database_sha, storage_inventory_sha256: $rollback_storage_sha, migrations: $rollback_migrations, runtime: $rollback_runtime, doctor: true, http: true, restart: true, exact: (($source_database_sha == $rollback_database_sha) and ($source_storage_sha == $rollback_storage_sha))}, phases: $phases, cleanup: {verified: $cleanup_verified, maintainer_volumes_unchanged: $maintainer_unchanged}}' \
         > "$INTERNAL_EVIDENCE"
 
     if [[ -n "$EVIDENCE_PATH" ]]; then

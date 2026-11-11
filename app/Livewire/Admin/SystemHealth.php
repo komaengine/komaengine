@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin;
 
+use App\Engine\Health\BuildIdentity;
 use App\Engine\Health\CronCommand;
 use App\Engine\Health\Heartbeats;
 use App\Engine\Health\ReadinessChecks;
@@ -110,12 +111,7 @@ class SystemHealth extends Component
             'php' => $php,
             'phpVersion' => PHP_VERSION,
             'disk' => $disk,
-            'release' => [
-                'version' => (string) config('koma.version'),
-                'commit' => (string) config('koma.release.commit'),
-                'build_id' => (string) config('koma.release.build_id'),
-                'trusted' => filter_var(config('koma.release.trusted'), FILTER_VALIDATE_BOOL),
-            ],
+            'release' => BuildIdentity::forThisSite(),
             'update' => app(UpdateCheck::class)->status(),
             'problems' => $problems,
             'docsUrl' => rtrim((string) config('koma.docs_url'), '/'),

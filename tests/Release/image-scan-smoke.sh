@@ -60,7 +60,11 @@ done
 
 if [[ -z "${KOMA_TEST_IMAGE:-}" ]]; then
     RELEASE_VERSION="$(tr -d '\r\n' < "$CONTEXT/VERSION")"
+    # Build as the release runners do, with no cached layers: a cached
+    # `apt-get upgrade` layer would scan yesterday's Debian packages.
     docker build \
+        --pull \
+        --no-cache \
         --quiet \
         --file "$CONTEXT/Dockerfile" \
         --tag "$BUILT_IMAGE" \

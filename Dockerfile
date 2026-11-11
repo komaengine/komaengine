@@ -15,7 +15,7 @@ RUN npm run build
 # ---- Stage 2: runtime (Apache + PHP-FPM 8.4) ----
 FROM php:8.4.27-fpm-bookworm@sha256:1e3a12968ba1eeba4c23f4e8e550b3777817330c58cce1e53f4bd97f20a15671 AS runtime
 
-ARG KOMA_RELEASE_VERSION=1.1.0
+ARG KOMA_RELEASE_VERSION=1.1.1
 ARG KOMA_RELEASE_COMMIT=unavailable
 ARG KOMA_RELEASE_DIRTY=unknown
 ARG KOMA_RELEASE_BUILD_ID=development
@@ -80,7 +80,7 @@ RUN set -eu; \
     echo "ServerName localhost" >> /etc/apache2/apache2.conf; \
     apt-get clean; rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2.9.8@sha256:b09bccd91a78fe8a9ab4b33d707b862e8fe54fec17782e32683ad2a69c46867d /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.11.2@sha256:5bcb28b8d0edc4091125f8218f9d088f998bdfc843f8fbb9a4beb4dcd8625684 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 

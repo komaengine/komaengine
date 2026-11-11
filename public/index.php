@@ -11,6 +11,16 @@ if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php'))
 }
 
 // Register the Composer autoloader...
+if (! is_file(__DIR__.'/../vendor/autoload.php')) {
+    http_response_code(503);
+    header('Content-Type: text/plain; charset=UTF-8');
+    echo "KomaEngine cannot start: vendor/autoload.php is missing.\n"
+        ."This looks like GitHub's \"Source code\" download or a Git checkout. Install the\n"
+        ."release ZIP (komaengine-YYYYMMDD-HHMMSS.zip) from https://komaengine.com/download/.\n"
+        ."Developers: run composer install.\n";
+    exit;
+}
+
 require __DIR__.'/../vendor/autoload.php';
 
 // Bootstrap Laravel and handle the request...

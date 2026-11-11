@@ -61,6 +61,111 @@ test('an administrator sees every check, background work, PHP limits, disk, and 
         ->and($health->viewData('background')['queue_stale'])->toBeFalse();
 });
 
+/** A build metadata file as the release ZIP writes it, with some lines replaced. */
+function writeHealthBuildMetadata(string $path, array $overrides = []): void
+{
+    $version = (string) config('koma.version');
+    $commit = '0123456789abcdef0123456789abcdef01234567';
+    $lines = array_merge([
+        'format' => 'koma-build-v1',
+        'artifact' => 'flatfile',
+        'release_version' => $version,
+        'source_commit' => $commit,
+        'source_dirty' => 'false',
+        'source_policy' => 'exact-commit',
+        'build_id' => $version.'+'.substr($commit, 0, 12),
+        'source_manifest_sha256' => str_repeat('a', 64),
+        'composer_lock_sha256' => str_repeat('b', 64),
+        'package_lock_sha256' => str_repeat('c', 64),
+    ], $overrides);
+
+    file_put_contents($path, implode('', array_map(
+        fn (string $key, string $value) => $key.'='.$value."\n",
+        array_keys($lines),
+        $lines,
+    )));
+}
+
+test('a release ZIP install is reported as an official build from its metadata file', function () {
+    $metadata = $this->healthRoot.'/KOMA-BUILD-METADATA.txt';
+    writeHealthBuildMetadata($metadata);
+    config([
+        'koma.release.metadata_path' => $metadata,
+        'koma.release.commit' => 'unavailable',
+        'koma.release.build_id' => 'development',
+        'koma.release.trusted' => false,
+    ]);
+
+    $this->actingAs($this->admin)->get(route('admin.health'))
+        ->assertOk()
+        ->assertSeeHtml('data-testid="health-official">Yes<')
+        ->assertSee('0123456789abcdef0123456789abcdef01234567')
+        ->assertSee(config('koma.version').'+0123456789ab')
+        ->assertDontSeeHtml('data-testid="health-official-reason"')
+        ->assertSee('This page cannot check signatures.')
+        ->assertSeeHtml('https://github.com/komaengine/komaengine/blob/main/docs/SUPPLY_CHAIN.md#verify-a-release');
+});
+
+test('a build metadata file that is not an official exact-commit build says No and why', function (array $overrides, string $reason) {
+    $metadata = $this->healthRoot.'/KOMA-BUILD-METADATA.txt';
+    writeHealthBuildMetadata($metadata, $overrides);
+    config(['koma.release.metadata_path' => $metadata, 'koma.release.trusted' => true]);
+
+    Livewire::actingAs($this->admin)->test(SystemHealth::class)
+        ->assertSeeHtml('data-testid="health-official">No<')
+        ->assertSeeHtml('data-testid="health-official-reason"')
+        ->assertSee($reason);
+})->with([
+    'working-tree image' => [
+        ['artifact' => 'docker', 'source_policy' => 'working-tree', 'source_commit' => 'unavailable', 'source_dirty' => 'unknown', 'build_id' => 'development'],
+        'This copy was built from a working tree, not from one exact commit.',
+    ],
+    'other version' => [
+        ['release_version' => '0.9.0', 'build_id' => '0.9.0+0123456789ab'],
+        'The build metadata is for version 0.9.0, but this site runs ',
+    ],
+]);
+
+test('a malformed build metadata file leaves the page working and says No', function (string $contents, string $reason) {
+    $metadata = $this->healthRoot.'/KOMA-BUILD-METADATA.txt';
+    file_put_contents($metadata, $contents);
+    config(['koma.release.metadata_path' => $metadata, 'koma.release.trusted' => true]);
+
+    $this->actingAs($this->admin)->get(route('admin.health'))
+        ->assertOk()
+        ->assertSee('Disk space')
+        ->assertSeeHtml('data-testid="health-official">No<')
+        ->assertSee($reason);
+})->with([
+    'not key=value' => ["format=koma-build-v1\nthis is not metadata\n", 'The build metadata file is malformed: line 2 is not a key=value pair.'],
+    'duplicate key' => ["format=koma-build-v1\nformat=koma-build-v1\n", 'The build metadata file is malformed: line 2 repeats format.'],
+]);
+
+test('without a metadata file the release environment decides, as before', function () {
+    config(['koma.release.metadata_path' => $this->healthRoot.'/KOMA-BUILD-METADATA.txt']);
+
+    config([
+        'koma.release.commit' => 'fedcba9876543210fedcba9876543210fedcba98',
+        'koma.release.build_id' => config('koma.version').'+fedcba987654',
+        'koma.release.trusted' => 'true',
+    ]);
+    Livewire::actingAs($this->admin)->test(SystemHealth::class)
+        ->assertSeeHtml('data-testid="health-official">Yes<')
+        ->assertSee('fedcba9876543210fedcba9876543210fedcba98')
+        ->assertDontSeeHtml('data-testid="health-official-reason"');
+
+    config([
+        'koma.release.commit' => 'unavailable',
+        'koma.release.build_id' => 'development',
+        'koma.release.trusted' => false,
+    ]);
+    Livewire::actingAs($this->admin)->test(SystemHealth::class)
+        ->assertSeeHtml('data-testid="health-official">No<')
+        ->assertSee('development')
+        ->assertSee('This page cannot check signatures.')
+        ->assertDontSeeHtml('data-testid="health-official-reason"');
+});
+
 test('an editor cannot open the health page', function () {
     $editor = User::factory()->create();
     $editor->assignRole('Editor');

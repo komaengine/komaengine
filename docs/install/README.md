@@ -19,8 +19,11 @@ and in the browser tab.
 ## What you need
 
 The Plesk, cPanel, and Ubuntu guides install the **release ZIP**: a folder of
-ready-to-run PHP files, with everything already built. You do not need
-Composer, Node, or Git on the server. You need:
+ready-to-run PHP files, with everything already built. It is the file named
+`komaengine-YYYYMMDD-HHMMSS.zip` on the
+[download page](https://komaengine.com/download/); GitHub's **Source code**
+downloads lack `vendor/` and the built assets, and cannot be installed. You do
+not need Composer, Node, or Git on the server. You need:
 
 - **A domain or subdomain** for the site, for example `manga.example.com`.
 - **PHP 8.3, 8.4, or 8.5** with these extensions: GD, ZIP, PDO MySQL,

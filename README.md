@@ -37,7 +37,10 @@ does not determine publication rights or an operator's legal obligations.
 ## Install
 
 Start at [Installing KomaEngine](docs/install/README.md), which helps you pick
-a guide and lists what you need.
+a guide and lists what you need. The Plesk, cPanel, Ubuntu, and flat-file
+guides install the release ZIP, `komaengine-YYYYMMDD-HHMMSS.zip`, from the
+[download page](https://komaengine.com/download/); GitHub's **Source code**
+downloads cannot be installed.
 
 | Path | Use it when |
 |---|---|

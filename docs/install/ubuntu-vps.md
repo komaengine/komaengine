@@ -185,8 +185,10 @@ give it the MariaDB `root` account.
 ## 4. Download, verify, and unpack the ZIP
 
 On the [download page](https://komaengine.com/download/), copy the link to the
-release ZIP and its SHA-256. Download the ZIP on the server into `/tmp`. Replace
-the link with the one you copied:
+release ZIP and its SHA-256. The link ends in `komaengine-YYYYMMDD-HHMMSS.zip`;
+GitHub's **Source code** downloads are the repository's source without
+`vendor/` or the built assets, and cannot be installed. Download the ZIP on the
+server into `/tmp`. Replace the link with the one you copied:
 
 ```bash
 cd /tmp
